@@ -30,15 +30,15 @@ jobs:
             rust_target: x86_64-pc-windows-msvc
             tauri_args: ''
             
-          # macOS x64 (Intel)
+          # macOS x64 (Intel) - using macos-14 with Rosetta
           - platform: macos
-            os: macos-13
+            os: macos-14
             rust_target: x86_64-apple-darwin
             tauri_args: '--target x86_64-apple-darwin'
             
           # macOS ARM64 (Apple Silicon)
           - platform: macos-arm
-            os: macos-latest
+            os: macos-14
             rust_target: aarch64-apple-darwin
             tauri_args: '--target aarch64-apple-darwin'
 
@@ -92,7 +92,7 @@ jobs:
 
       # Upload Linux artifacts
       - name: Upload Linux artifacts
-        if: matrix.platform == 'linux'
+        if: matrix.platform == 'linux' && always()
         uses: actions/upload-artifact@v4
         with:
           name: linux-binaries
@@ -104,7 +104,7 @@ jobs:
 
       # Upload Windows artifacts
       - name: Upload Windows artifacts
-        if: matrix.platform == 'windows'
+        if: matrix.platform == 'windows' && always()
         uses: actions/upload-artifact@v4
         with:
           name: windows-binaries
@@ -115,7 +115,7 @@ jobs:
 
       # Upload macOS x64 artifacts
       - name: Upload macOS x64 artifacts
-        if: matrix.platform == 'macos'
+        if: matrix.platform == 'macos' && always()
         uses: actions/upload-artifact@v4
         with:
           name: macos-x64-binaries
@@ -126,7 +126,7 @@ jobs:
 
       # Upload macOS ARM64 artifacts
       - name: Upload macOS ARM64 artifacts
-        if: matrix.platform == 'macos-arm'
+        if: matrix.platform == 'macos-arm' && always()
         uses: actions/upload-artifact@v4
         with:
           name: macos-arm64-binaries

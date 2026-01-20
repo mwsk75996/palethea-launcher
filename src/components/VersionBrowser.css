@@ -1,0 +1,169 @@
+.version-browser {
+  padding: 24px;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.version-header {
+  margin-bottom: 24px;
+}
+
+.version-header h1 {
+  font-size: 28px;
+  font-weight: 700;
+  color: #fff;
+  margin: 0 0 8px 0;
+}
+
+.subtitle {
+  color: rgba(255, 255, 255, 0.6);
+  margin: 0;
+}
+
+.version-filters {
+  display: flex;
+  gap: 16px;
+  margin-bottom: 20px;
+  flex-wrap: wrap;
+}
+
+.search-box {
+  flex: 1;
+  min-width: 200px;
+}
+
+.search-box input {
+  width: 100%;
+  padding: 12px 16px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  color: #fff;
+  font-size: 14px;
+  outline: none;
+  transition: all 0.2s ease;
+}
+
+.search-box input:focus {
+  border-color: rgba(102, 126, 234, 0.5);
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.search-box input::placeholder {
+  color: rgba(255, 255, 255, 0.4);
+}
+
+.filter-buttons {
+  display: flex;
+  gap: 8px;
+}
+
+.filter-btn {
+  padding: 10px 16px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.filter-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: #fff;
+}
+
+.filter-btn.active {
+  background: linear-gradient(135deg, rgba(102, 126, 234, 0.3) 0%, rgba(118, 75, 162, 0.3) 100%);
+  border-color: rgba(102, 126, 234, 0.5);
+  color: #fff;
+}
+
+.version-list {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.version-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 14px 18px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 8px;
+  transition: all 0.2s ease;
+}
+
+.version-item:hover {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.1);
+}
+
+.version-info {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.version-id {
+  font-weight: 600;
+  color: #fff;
+  font-size: 15px;
+}
+
+.version-type {
+  padding: 4px 10px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  text-transform: capitalize;
+}
+
+.type-release {
+  background: rgba(72, 187, 120, 0.2);
+  color: #68d391;
+}
+
+.type-snapshot {
+  background: rgba(237, 137, 54, 0.2);
+  color: #f6ad55;
+}
+
+.type-beta {
+  background: rgba(102, 126, 234, 0.2);
+  color: #a5b4fc;
+}
+
+.type-alpha {
+  background: rgba(159, 122, 234, 0.2);
+  color: #c4b5fd;
+}
+
+.version-date {
+  color: rgba(255, 255, 255, 0.5);
+  font-size: 13px;
+}
+
+.loading-state {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.more-versions {
+  text-align: center;
+  padding: 16px;
+  color: rgba(255, 255, 255, 0.5);
+  font-size: 14px;
+}

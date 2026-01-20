@@ -1,0 +1,762 @@
+import { useState, useEffect, useCallback } from 'react';
+import { invoke } from '@tauri-apps/api/core';
+import { open } from '@tauri-apps/plugin-shell';
+import { listen } from '@tauri-apps/api/event';
+import Sidebar from './components/Sidebar';
+import InstanceList from './components/InstanceList';
+import InstanceEditor from './components/InstanceEditor';
+import Settings from './components/Settings';
+import SkinManager from './components/SkinManager';
+import CreateInstance from './components/CreateInstance';
+import ContextMenu from './components/ContextMenu';
+import LoginPrompt from './components/LoginPrompt';
+import ConfirmModal from './components/ConfirmModal';
+import Updates from './components/Updates';
+import './App.css';
+
+function App() {
+  const [activeTab, setActiveTab] = useState('instances');
+  const [instances, setInstances] = useState([]);
+  const [accounts, setAccounts] = useState([]);
+  const [activeAccount, setActiveAccount] = useState(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [loadingStatus, setLoadingStatus] = useState('');
+  const [loadingProgress, setLoadingProgress] = useState(0);
+  const [notification, setNotification] = useState(null);
+  const [editingInstanceId, setEditingInstanceId] = useState(null);
+  const [contextMenu, setContextMenu] = useState(null);
+  const [showLoginPrompt, setShowLoginPrompt] = useState(false);
+  const [confirmModal, setConfirmModal] = useState(null);
+  const [runningInstances, setRunningInstances] = useState([]);
+  const [showWelcome, setShowWelcome] = useState(false);
+  const [welcomeDontShow, setWelcomeDontShow] = useState(false);
+  const [skinRefreshKey, setSkinRefreshKey] = useState(Date.now());
+  const [currentSkinUrl, setCurrentSkinUrl] = useState(null);
+  const [skinCache, setSkinCache] = useState({});
+
+  useEffect(() => {
+    // Load all cached skins on startup
+    const cache = {};
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key.startsWith('skin_')) {
+        cache[key.replace('skin_', '')] = localStorage.getItem(key);
+      }
+    }
+    setSkinCache(cache);
+
+    if (activeAccount?.uuid) {
+      const cached = localStorage.getItem(`skin_${activeAccount.uuid}`);
+      if (cached) setCurrentSkinUrl(cached);
+    } else {
+      setCurrentSkinUrl(null);
+    }
+  }, [activeAccount]);
+
+  const loadSkinForAccount = useCallback(async (isLoggedIn, uuid) => {
+    if (!isLoggedIn) {
+      setCurrentSkinUrl(null);
+      return;
+    }
+
+    try {
+      const data = await invoke('get_mc_profile_full');
+      const activeSkin = data.skins?.find(s => s.state === 'ACTIVE');
+      if (activeSkin?.url) {
+        setCurrentSkinUrl(activeSkin.url);
+        if (uuid) {
+          localStorage.setItem(`skin_${uuid}`, activeSkin.url);
+          setSkinCache(prev => ({ ...prev, [uuid]: activeSkin.url }));
+        }
+      } else {
+        // No custom skin, it's a default Steve/Alex
+        setCurrentSkinUrl(null);
+        if (uuid) {
+          localStorage.removeItem(`skin_${uuid}`);
+          setSkinCache(prev => {
+            const next = { ...prev };
+            delete next[uuid];
+            return next;
+          });
+        }
+      }
+    } catch (err) {
+      console.warn('Silent skin load failed:', err);
+    }
+  }, []);
+
+  const loadInstances = useCallback(async () => {
+    try {
+      const result = await invoke('get_instances');
+      setInstances(result);
+    } catch (error) {
+      console.error('Failed to load instances:', error);
+    }
+  }, []);
+
+  const loadRunningInstances = useCallback(async () => {
+    try {
+      const result = await invoke('get_running_instances');
+      setRunningInstances(result);
+    } catch (error) {
+      console.error('Failed to load running instances:', error);
+    }
+  }, []);
+
+  const loadAccounts = useCallback(async () => {
+    try {
+      // Load saved accounts from Rust backend
+      const savedData = await invoke('get_saved_accounts');
+      
+      if (!savedData.accounts || savedData.accounts.length === 0) {
+        // No saved accounts, show login prompt
+        setShowLoginPrompt(true);
+        setActiveAccount({ username: 'Player', isLoggedIn: false, uuid: null });
+        setAccounts([]);
+        return;
+      }
+      
+      // Convert saved accounts to UI format
+      const uiAccounts = savedData.accounts.map(a => ({
+        username: a.username,
+        isLoggedIn: a.is_microsoft,
+        uuid: a.uuid
+      }));
+      
+      setAccounts(uiAccounts);
+      
+      // Find active account
+      const activeUsername = savedData.active_account || savedData.accounts[0]?.username;
+      const activeAcc = savedData.accounts.find(a => a.username === activeUsername);
+      
+      if (activeAcc) {
+        // Validate/refresh Microsoft account
+        if (activeAcc.is_microsoft) {
+          const isValid = await invoke('validate_account', { accessToken: activeAcc.access_token });
+          
+          if (!isValid) {
+            // Try to refresh the token
+            try {
+              const refreshed = await invoke('refresh_account', { username: activeAcc.username });
+              if (refreshed) {
+                // Reload accounts after refresh
+                const refreshedData = await invoke('get_saved_accounts');
+                const refreshedAcc = refreshedData.accounts.find(a => a.username === activeUsername);
+                if (refreshedAcc) {
+                  await invoke('switch_account', { username: activeAcc.username });
+                  setActiveAccount({
+                    username: refreshedAcc.username,
+                    isLoggedIn: true,
+                    uuid: refreshedAcc.uuid
+                  });
+                  return;
+                }
+              }
+            } catch (refreshError) {
+              console.error('Failed to refresh token:', refreshError);
+              // Remove invalid account
+              await invoke('remove_saved_account', { username: activeAcc.username });
+              showNotification(`Session expired for ${activeAcc.username}. Please login again.`, 'warning');
+              
+              // Update accounts list
+              const updatedData = await invoke('get_saved_accounts');
+              const updatedAccounts = (updatedData.accounts || []).map(a => ({
+                username: a.username,
+                isLoggedIn: a.is_microsoft,
+                uuid: a.uuid
+              }));
+              setAccounts(updatedAccounts);
+              
+              if (updatedAccounts.length === 0) {
+                setShowLoginPrompt(true);
+                setActiveAccount({ username: 'Player', isLoggedIn: false, uuid: null });
+              } else {
+                // Switch to first available account
+                const firstAcc = updatedData.accounts[0];
+                await invoke('switch_account', { username: firstAcc.username });
+                setActiveAccount({
+                  username: firstAcc.username,
+                  isLoggedIn: firstAcc.is_microsoft,
+                  uuid: firstAcc.uuid
+                });
+              }
+              return;
+            }
+          }
+        }
+        
+        // Switch to active account in backend
+        await invoke('switch_account', { username: activeAcc.username });
+        setActiveAccount({
+          username: activeAcc.username,
+          isLoggedIn: activeAcc.is_microsoft,
+          uuid: activeAcc.uuid
+        });
+        loadSkinForAccount(activeAcc.is_microsoft, activeAcc.uuid);
+      }
+    } catch (error) {
+      console.error('Failed to load accounts:', error);
+      setShowLoginPrompt(true);
+      setActiveAccount({ username: 'Player', isLoggedIn: false, uuid: null });
+    }
+  }, [loadSkinForAccount]);
+
+  useEffect(() => {
+    loadInstances();
+    loadAccounts();
+    loadRunningInstances();
+    
+    // Poll running instances periodically (process state can change without events)
+    const runningPoll = setInterval(loadRunningInstances, 2000);
+    
+    // Disable default right-click unless Ctrl is pressed
+    const handleContextMenu = (e) => {
+      if (!e.ctrlKey) {
+        e.preventDefault();
+      }
+    };
+    document.addEventListener('contextmenu', handleContextMenu);
+    
+    // Listen for download progress events
+    const unlisten = listen('download-progress', (event) => {
+      const { stage, percentage } = event.payload;
+      setLoadingStatus(stage);
+      setLoadingProgress(percentage);
+    });
+    
+    // Listen for instance refresh events from backend
+    const unlistenRefresh = listen('refresh-instances', () => {
+      loadInstances();
+    });
+    
+    return () => {
+      clearInterval(runningPoll);
+      unlisten.then(fn => fn());
+      unlistenRefresh.then(fn => fn());
+      document.removeEventListener('contextmenu', handleContextMenu);
+    };
+  }, [loadInstances, loadRunningInstances, isLoading]);
+
+  useEffect(() => {
+    const hideWelcome = localStorage.getItem('palethea_welcome_hide') === '1';
+    setShowWelcome(!hideWelcome);
+  }, []);
+
+  // Close context menu when clicking elsewhere
+  useEffect(() => {
+    const handleClick = () => setContextMenu(null);
+    document.addEventListener('click', handleClick);
+    return () => document.removeEventListener('click', handleClick);
+  }, []);
+
+  const handleInstanceContextMenu = (e, instance) => {
+    e.preventDefault();
+    setContextMenu({
+      x: e.clientX,
+      y: e.clientY,
+      instance,
+    });
+  };
+
+  const handleContextMenuAction = async (action) => {
+    const instance = contextMenu?.instance;
+    setContextMenu(null);
+    
+    switch (action) {
+      case 'play':
+        if (instance) handleLaunchInstance(instance.id);
+        break;
+      case 'edit':
+        if (instance) handleEditInstance(instance.id);
+        break;
+      case 'delete':
+        if (instance) handleDeleteInstance(instance.id);
+        break;
+      case 'create':
+        setActiveTab('create');
+        break;
+      case 'openFolder':
+        if (instance) {
+          try {
+            await invoke('open_instance_folder', { instanceId: instance.id, folderType: 'root' });
+          } catch (error) {
+            console.error('Failed to open folder:', error);
+          }
+        }
+        break;
+      case 'clone':
+        if (instance) {
+          handleCloneInstance(instance);
+        }
+        break;
+    }
+  };
+
+  const handleCloneInstance = async (instance) => {
+    const newName = `${instance.name} (Copy)`;
+    setIsLoading(true);
+    setLoadingStatus('Cloning instance...');
+    try {
+      await invoke('clone_instance', { instanceId: instance.id, newName });
+      await loadInstances();
+      showNotification(`Cloned "${instance.name}" successfully!`, 'success');
+    } catch (error) {
+      showNotification(`Failed to clone instance: ${error}`, 'error');
+    }
+    setIsLoading(false);
+    setLoadingStatus('');
+  };
+
+  const showNotification = (message, type = 'info') => {
+    setNotification({ message, type });
+    setTimeout(() => setNotification(null), 5000);
+  };
+
+  const handleCreateInstance = async (name, versionId, modLoader = 'vanilla', modLoaderVersion = null) => {
+    setIsLoading(true);
+    setLoadingProgress(0);
+    try {
+      // Create instance first (so it exists even if download fails)
+      setLoadingStatus('Creating instance...');
+      setLoadingProgress(5);
+      const newInstance = await invoke('create_instance', { name, versionId });
+      
+      setLoadingStatus(`Downloading Minecraft ${versionId}...`);
+      await invoke('download_version', { versionId });
+      
+      setLoadingProgress(80);
+      
+      // Install mod loader if not vanilla
+      if (modLoader !== 'vanilla') {
+        setLoadingStatus(`Installing ${modLoader}...`);
+        setLoadingProgress(90);
+        
+        if (modLoader === 'fabric') {
+          try {
+            const loaderVersions = modLoaderVersion ? [modLoaderVersion] : await invoke('get_loader_versions', {
+              loader: 'fabric',
+              gameVersion: versionId
+            });
+            const loaderVersion = modLoaderVersion || (loaderVersions && loaderVersions[0]);
+            
+            if (loaderVersion) {
+              await invoke('install_fabric', { 
+                instanceId: newInstance.id, 
+                loaderVersion
+              });
+            } else {
+              showNotification(`No Fabric version found for ${versionId}`, 'error');
+            }
+          } catch (fabricError) {
+            console.error('Failed to install Fabric:', fabricError);
+            showNotification(`Instance created but Fabric installation failed: ${fabricError}`, 'error');
+          }
+        } else if (modLoader === 'forge') {
+          try {
+            const loaderVersions = modLoaderVersion ? [modLoaderVersion] : await invoke('get_loader_versions', {
+              loader: 'forge',
+              gameVersion: versionId
+            });
+            const loaderVersion = modLoaderVersion || (loaderVersions && loaderVersions[0]);
+            
+            if (loaderVersion) {
+              await invoke('install_forge', { 
+                instanceId: newInstance.id, 
+                loaderVersion
+              });
+            } else {
+              showNotification(`No Forge version found for ${versionId}`, 'error');
+            }
+          } catch (forgeError) {
+            console.error('Failed to install Forge:', forgeError);
+            showNotification(`Instance created but Forge installation failed: ${forgeError}`, 'error');
+          }
+        } else if (modLoader === 'neoforge') {
+          try {
+            const loaderVersions = modLoaderVersion ? [modLoaderVersion] : await invoke('get_loader_versions', {
+              loader: 'neoforge',
+              gameVersion: versionId
+            });
+            const loaderVersion = modLoaderVersion || (loaderVersions && loaderVersions[0]);
+            
+            if (loaderVersion) {
+              await invoke('install_neoforge', { 
+                instanceId: newInstance.id, 
+                loaderVersion
+              });
+            } else {
+              showNotification(`No NeoForge version found for ${versionId}`, 'error');
+            }
+          } catch (neoforgeError) {
+            console.error('Failed to install NeoForge:', neoforgeError);
+            showNotification(`Instance created but NeoForge installation failed: ${neoforgeError}`, 'error');
+          }
+        }
+      }
+      
+      setLoadingProgress(100);
+      await loadInstances();
+      setActiveTab('instances');
+      showNotification(`Created instance "${name}"!`, 'success');
+    } catch (error) {
+      showNotification(`Failed to create instance: ${error}`, 'error');
+    }
+    setIsLoading(false);
+    setLoadingStatus('');
+    setLoadingProgress(0);
+  };
+
+  const handleDeleteInstance = (instanceId) => {
+    const instance = instances.find(i => i.id === instanceId);
+    setConfirmModal({
+      title: 'Delete Instance',
+      message: `Are you sure you want to delete "${instance?.name || 'this instance'}"? This will remove all mods, worlds, and data associated with it. This action cannot be undone.`,
+      confirmText: 'Delete',
+      cancelText: 'Cancel',
+      variant: 'danger',
+      onConfirm: async () => {
+        setConfirmModal(null);
+        try {
+          await invoke('delete_instance', { instanceId });
+          await loadInstances();
+          showNotification('Instance deleted', 'success');
+        } catch (error) {
+          showNotification(`Failed to delete instance: ${error}`, 'error');
+        }
+      },
+      onCancel: () => setConfirmModal(null)
+    });
+  };
+
+  const handleLaunchInstance = async (instanceId) => {
+    setIsLoading(true);
+    try {
+      const result = await invoke('launch_instance', { instanceId });
+      showNotification(result, 'success');
+      loadRunningInstances(); // Update running instances immediately
+    } catch (error) {
+      showNotification(`Failed to launch: ${error}`, 'error');
+    }
+    setIsLoading(false);
+  };
+
+  const handleStopInstance = async (instanceId) => {
+    try {
+      const result = await invoke('kill_game', { instanceId });
+      showNotification(result, 'success');
+      loadRunningInstances(); // Update running instances immediately
+      loadInstances(); // Reload to get updated playtime
+    } catch (error) {
+      showNotification(`Failed to stop: ${error}`, 'error');
+    }
+  };
+
+  const handleSetUsername = async (newUsername) => {
+    try {
+      await invoke('set_offline_user', { username: newUsername });
+      const newAccount = { username: newUsername, isLoggedIn: false, uuid: null };
+      setActiveAccount(newAccount);
+      
+      // Add to accounts list if not exists
+      const savedAccounts = JSON.parse(localStorage.getItem('palethea_accounts') || '[]');
+      if (!savedAccounts.find(a => a.username === newUsername)) {
+        savedAccounts.push(newAccount);
+        localStorage.setItem('palethea_accounts', JSON.stringify(savedAccounts));
+        setAccounts(savedAccounts);
+      }
+      
+      showNotification(`Username set to "${newUsername}"`, 'success');
+    } catch (error) {
+      showNotification(`Failed to set username: ${error}`, 'error');
+    }
+  };
+
+  const handleLogin = async (newUsername) => {
+    // Reload accounts from backend (already saved there)
+    const savedData = await invoke('get_saved_accounts');
+    const uiAccounts = savedData.accounts.map(a => ({
+      username: a.username,
+      isLoggedIn: a.is_microsoft,
+      uuid: a.uuid
+    }));
+    setAccounts(uiAccounts);
+    
+    const account = savedData.accounts.find(a => a.username === newUsername);
+    if (account) {
+      setActiveAccount({
+        username: account.username,
+        isLoggedIn: account.is_microsoft,
+        uuid: account.uuid
+      });
+    }
+    
+    showNotification(`Signed in as ${newUsername}`, 'success');
+  };
+
+  const handleLogout = () => {
+    setActiveAccount({ username: 'Player', isLoggedIn: false, uuid: null });
+    setCurrentSkinUrl(null);
+    showNotification('Signed out', 'success');
+  };
+
+  const handleCloseWelcome = () => {
+    if (welcomeDontShow) {
+      localStorage.setItem('palethea_welcome_hide', '1');
+    }
+    setShowWelcome(false);
+  };
+
+  const handleOpenSupport = async () => {
+    try {
+      await open('https://palethea.com');
+    } catch (error) {
+      console.error('Failed to open support link:', error);
+    }
+  };
+
+  const handleSwitchAccount = async (account) => {
+    try {
+      await invoke('switch_account', { username: account.username });
+      setActiveAccount(account);
+      loadSkinForAccount(account.isLoggedIn, account.uuid);
+      showNotification(`Switched to ${account.username}`, 'success');
+    } catch (error) {
+      showNotification(`Failed to switch account: ${error}`, 'error');
+    }
+  };
+
+  const handleAddAccount = () => {
+    setShowLoginPrompt(true);
+  };
+
+  const handleRemoveAccount = async (username) => {
+    try {
+      await invoke('remove_saved_account', { username });
+      const updatedData = await invoke('get_saved_accounts');
+      const updatedAccounts = (updatedData.accounts || []).map(a => ({
+        username: a.username,
+        isLoggedIn: a.is_microsoft,
+        uuid: a.uuid
+      }));
+      setAccounts(updatedAccounts);
+      
+      // If removed active account, switch to another or show login
+      if (activeAccount?.username === username) {
+        if (updatedAccounts.length > 0) {
+          await invoke('switch_account', { username: updatedAccounts[0].username });
+          setActiveAccount(updatedAccounts[0]);
+        } else {
+          setActiveAccount({ username: 'Player', isLoggedIn: false, uuid: null });
+          setShowLoginPrompt(true);
+        }
+      }
+      showNotification(`Removed account ${username}`, 'success');
+    } catch (error) {
+      showNotification(`Failed to remove account: ${error}`, 'error');
+    }
+  };
+
+  const handleEditInstance = (instanceId) => {
+    setEditingInstanceId(instanceId);
+  };
+
+  const handleCloseEditor = () => {
+    setEditingInstanceId(null);
+    loadInstances();
+  };
+
+  const renderContent = () => {
+    if (editingInstanceId) {
+      return (
+        <InstanceEditor
+          instanceId={editingInstanceId}
+          onClose={handleCloseEditor}
+          onUpdate={loadInstances}
+          onLaunch={handleLaunchInstance}
+        />
+      );
+    }
+
+    switch (activeTab) {
+      case 'instances':
+        return (
+          <InstanceList
+            instances={instances}
+            onLaunch={handleLaunchInstance}
+            onStop={handleStopInstance}
+            onDelete={handleDeleteInstance}
+            onEdit={handleEditInstance}
+            onCreate={() => setActiveTab('create')}
+            onContextMenu={handleInstanceContextMenu}
+            isLoading={isLoading}
+            runningInstances={runningInstances}
+          />
+        );
+      case 'create':
+        return (
+          <CreateInstance
+            onClose={() => setActiveTab('instances')}
+            onCreate={handleCreateInstance}
+            isLoading={isLoading}
+            mode="page"
+          />
+        );
+      case 'settings':
+        return (
+          <Settings
+            username={activeAccount?.username || 'Player'}
+            onSetUsername={handleSetUsername}
+            isLoggedIn={activeAccount?.isLoggedIn || false}
+            onLogin={handleLogin}
+            onLogout={handleLogout}
+          />
+        );
+      case 'skins':
+        return (
+          <SkinManager 
+            activeAccount={activeAccount} 
+            showNotification={showNotification}
+            onSkinChange={(url) => {
+              setSkinRefreshKey(Date.now());
+              setCurrentSkinUrl(url || null);
+              if (activeAccount?.uuid) {
+                if (url && url.startsWith('http')) {
+                  localStorage.setItem(`skin_${activeAccount.uuid}`, url);
+                } else if (!url) {
+                  localStorage.removeItem(`skin_${activeAccount.uuid}`);
+                }
+              }
+            }}
+            onPreviewChange={setCurrentSkinUrl}
+          />
+        );
+      case 'updates':
+        return <Updates />;
+      default:
+        return null;
+    }
+  };
+
+  return (
+    <div className="app">
+      <Sidebar
+        activeTab={activeTab}
+        onTabChange={(tab) => {
+          setEditingInstanceId(null);
+          setActiveTab(tab);
+        }}
+        accounts={accounts}
+        activeAccount={activeAccount}
+        onSwitchAccount={handleSwitchAccount}
+        onAddAccount={handleAddAccount}
+        onRemoveAccount={handleRemoveAccount}
+        skinRefreshKey={skinRefreshKey}
+        currentSkinTexture={currentSkinUrl}
+        skinCache={skinCache}
+      />
+      <main className="main-content">
+        {renderContent()}
+      </main>
+
+      {showWelcome && (
+        <div className="welcome-overlay" onClick={handleCloseWelcome}>
+          <div className="welcome-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="welcome-header">
+              <h2>Welcome to Palethea Launcher</h2>
+              <button className="close-btn" onClick={handleCloseWelcome}>×</button>
+            </div>
+            <div className="welcome-body">
+              <div className="welcome-hero">
+                <div className="welcome-mark">P</div>
+                <div>
+                  <p className="welcome-title">Palethea Launcher</p>
+                  <p className="welcome-subtitle">Create and manage Minecraft instances with mod loaders, profiles, and performance tuning.</p>
+                </div>
+              </div>
+              <div className="welcome-card">
+                <p>Need help or updates?</p>
+                <button className="btn btn-secondary" onClick={handleOpenSupport}>
+                  Visit palethea.com
+                </button>
+              </div>
+              <p className="welcome-hint">
+                Tip: You can change whether this welcome screen shows in Settings later.
+              </p>
+            </div>
+            <div className="welcome-footer">
+              <button
+                className={`btn btn-secondary welcome-toggle ${welcomeDontShow ? 'active' : ''}`}
+                onClick={() => setWelcomeDontShow(!welcomeDontShow)}
+              >
+                Don’t show this again
+              </button>
+              <button className="btn btn-primary" onClick={handleCloseWelcome}>
+                Get Started
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      
+      
+      {notification && (
+        <div className={`notification notification-${notification.type}`}>
+          {notification.message}
+        </div>
+      )}
+      
+      {isLoading && (
+        <div className="loading-overlay">
+          <div className="loading-content">
+            <div className="loading-spinner"></div>
+            {loadingStatus && <p className="loading-status">{loadingStatus}</p>}
+            <div className="progress-bar-container">
+              <div 
+                className="progress-bar-fill" 
+                style={{ width: `${loadingProgress}%` }}
+              />
+            </div>
+            <p className="loading-percentage">{loadingProgress}%</p>
+          </div>
+        </div>
+      )}
+      
+      {contextMenu && (
+        <ContextMenu
+          x={contextMenu.x}
+          y={contextMenu.y}
+          instance={contextMenu.instance}
+          onAction={handleContextMenuAction}
+        />
+      )}
+      
+      {showLoginPrompt && (
+        <LoginPrompt
+          onLogin={async (username) => {
+            await handleLogin(username);
+            setShowLoginPrompt(false);
+          }}
+          onClose={() => setShowLoginPrompt(false)}
+          onOfflineMode={(username) => {
+            handleSetUsername(username);
+            setShowLoginPrompt(false);
+          }}
+        />
+      )}
+      
+      {confirmModal && (
+        <ConfirmModal
+          title={confirmModal.title}
+          message={confirmModal.message}
+          confirmText={confirmModal.confirmText}
+          cancelText={confirmModal.cancelText}
+          variant={confirmModal.variant}
+          onConfirm={confirmModal.onConfirm}
+          onCancel={confirmModal.onCancel}
+        />
+      )}
+    </div>
+  );
+}
+
+export default App;

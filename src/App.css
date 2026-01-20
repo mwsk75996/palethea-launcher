@@ -1,0 +1,342 @@
+* {
+  box-sizing: border-box;
+}
+
+html, body, #root {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+}
+
+.app {
+  display: flex;
+  height: 100vh;
+  background: radial-gradient(1200px 800px at 10% 0%, rgba(232, 156, 136, 0.08), transparent 60%),
+              radial-gradient(900px 700px at 90% 10%, rgba(120, 160, 255, 0.08), transparent 55%),
+              var(--background);
+  overflow: hidden;
+}
+
+.main-content {
+  flex: 1;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Notifications */
+.notification {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  padding: 14px 20px;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 500;
+  z-index: 2000;
+  animation: slideIn 0.3s ease;
+  max-width: 400px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--foreground);
+}
+
+@keyframes slideIn {
+  from {
+    transform: translateY(20px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+.notification-info {
+  border-left: 3px solid var(--accent);
+}
+
+.notification-success {
+  border-left: 3px solid #4ade80;
+}
+
+.notification-error {
+  border-left: 3px solid #f87171;
+}
+
+/* Loading overlay */
+.loading-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(26, 26, 28, 0.9);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1500;
+  backdrop-filter: blur(8px);
+}
+
+.loading-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  min-width: 300px;
+}
+
+.loading-spinner {
+  width: 32px;
+  height: 32px;
+  border: 2px solid var(--border);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+.loading-status {
+  color: var(--foreground);
+  font-size: 14px;
+  margin: 0;
+  text-align: center;
+}
+
+.progress-bar-container {
+  width: 100%;
+  height: 8px;
+  background: var(--surface);
+  border-radius: 4px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+}
+
+.progress-bar-fill {
+  height: 100%;
+  background: var(--accent);
+  border-radius: 4px;
+  transition: width 0.2s ease;
+}
+
+.loading-percentage {
+  color: var(--muted);
+  font-size: 13px;
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Welcome modal */
+.welcome-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(26, 26, 28, 0.85);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1600;
+  backdrop-filter: blur(6px);
+}
+
+.welcome-modal {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  width: 92%;
+  max-width: 640px;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.35);
+}
+
+.welcome-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 20px 24px;
+  border-bottom: 1px solid var(--border);
+}
+
+.welcome-header h2 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--foreground);
+}
+
+.welcome-body {
+  padding: 20px 24px 10px;
+  color: var(--foreground);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.welcome-hero {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+.welcome-mark {
+  width: 52px;
+  height: 52px;
+  border-radius: 14px;
+  display: grid;
+  place-items: center;
+  background: linear-gradient(135deg, rgba(232, 156, 136, 0.2), rgba(232, 156, 136, 0.05));
+  border: 1px solid rgba(232, 156, 136, 0.4);
+  color: var(--accent);
+  font-weight: 700;
+  font-size: 18px;
+}
+
+.welcome-title {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--foreground);
+}
+
+.welcome-subtitle {
+  margin: 4px 0 0;
+  color: var(--text-secondary);
+}
+
+.welcome-card {
+  border: 1px solid var(--border);
+  background: var(--background);
+  padding: 14px 16px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.welcome-card p {
+  margin: 0;
+  color: var(--text-secondary);
+}
+
+.welcome-hint {
+  margin: 0 0 12px;
+  color: var(--text-secondary);
+  font-size: 12px;
+}
+
+.welcome-body a {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.welcome-body a:hover {
+  text-decoration: underline;
+}
+
+
+.welcome-footer {
+  padding: 16px 24px 22px;
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.welcome-toggle.active {
+  background: var(--accent);
+  color: var(--background);
+  border-color: var(--accent);
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--muted);
+}
+
+/* Button shared styles */
+.btn {
+  padding: 10px 18px;
+  border: none;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.btn-primary {
+  background: var(--accent);
+  color: var(--background);
+}
+
+.btn-primary:hover:not(:disabled) {
+  opacity: 0.9;
+}
+
+.btn-secondary {
+  background: var(--surface);
+  color: var(--foreground);
+  border: 1px solid var(--border);
+}
+
+.btn-secondary:hover:not(:disabled) {
+  background: var(--border);
+}
+
+.subtitle {
+  color: var(--muted);
+  margin: 0;
+}
+
+/* Filter buttons shared */
+.filter-btn {
+  padding: 8px 14px;
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.filter-btn:hover {
+  border-color: var(--muted);
+  color: var(--foreground);
+}
+
+.filter-btn.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--background);
+}

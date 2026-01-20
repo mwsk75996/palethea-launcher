@@ -1,0 +1,293 @@
+.sidebar {
+  width: 220px;
+  background: var(--surface);
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+}
+
+.sidebar-header {
+  padding: 20px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  justify-content: center;
+}
+
+.logo {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  text-decoration: none;
+}
+
+.logo:hover .logo-text {
+  color: var(--accent);
+}
+
+.logo-text {
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--foreground);
+  letter-spacing: -0.5px;
+}
+
+.sidebar-nav {
+  flex: 1;
+  padding: 12px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.nav-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  background: transparent;
+  border: none;
+  color: var(--muted);
+  font-size: 14px;
+  text-align: left;
+  cursor: pointer;
+  border-radius: 8px;
+  transition: all 0.15s ease;
+}
+
+.nav-item:hover {
+  color: var(--foreground);
+  background: var(--background);
+}
+
+.nav-item.active {
+  color: var(--accent);
+  background: rgba(232, 156, 136, 0.1);
+}
+
+.nav-label {
+  font-weight: 500;
+}
+
+.sidebar-footer {
+  padding: 12px;
+  border-top: 1px solid var(--border);
+  position: relative;
+}
+
+.user-info {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.user-info:hover {
+  background: var(--background);
+}
+
+.user-avatar {
+  width: 36px;
+  height: 36px;
+  border-radius: 6px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  position: relative;
+}
+
+.sidebar-head-2d {
+  position: relative;
+  image-rendering: pixelated;
+  flex-shrink: 0;
+}
+
+.sidebar-head-2d .head-base,
+.sidebar-head-2d .head-overlay {
+  position: absolute;
+  background-repeat: no-repeat;
+}
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--background);
+  overflow: hidden;
+  position: relative;
+}
+
+.skin-head {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  image-rendering: pixelated;
+}
+
+.avatar-fallback {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.user-details {
+  flex: 1;
+  min-width: 0;
+}
+
+.user-name {
+  display: block;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--foreground);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.user-status {
+  display: block;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.account-expand {
+  color: var(--muted);
+  font-size: 10px;
+}
+
+/* Account Menu */
+.account-menu {
+  position: absolute;
+  bottom: 100%;
+  left: 12px;
+  right: 12px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  margin-bottom: 8px;
+  overflow: hidden;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+  z-index: 100;
+}
+
+.account-menu-header {
+  padding: 12px 14px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  border-bottom: 1px solid var(--border);
+}
+
+.account-option {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  padding: 0;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  transition: background 0.15s ease;
+  text-align: left;
+}
+
+.account-option:hover {
+  background: var(--background);
+}
+
+.account-option.active {
+  background: rgba(232, 156, 136, 0.1);
+}
+
+.account-option-main {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: 1;
+  padding: 10px 14px;
+  cursor: pointer;
+}
+
+.account-option-avatar {
+  width: 24px;
+  height: 24px;
+  border-radius: 4px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.skin-head-small {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  image-rendering: pixelated;
+}
+
+.account-option-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.account-option-name {
+  display: block;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text);
+}
+
+.account-option-type {
+  display: block;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.account-check {
+  color: var(--accent);
+  font-size: 14px;
+}
+
+.account-remove {
+  padding: 10px 14px;
+  background: transparent;
+  border: none;
+  color: var(--muted);
+  font-size: 18px;
+  cursor: pointer;
+  transition: color 0.15s ease;
+}
+
+.account-remove:hover {
+  color: #e74c3c;
+}
+
+.account-add {
+  display: block;
+  width: 100%;
+  padding: 12px 14px;
+  background: transparent;
+  border: none;
+  border-top: 1px solid var(--border);
+  color: var(--accent);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.15s ease;
+}
+
+.account-add:hover {
+  background: var(--background);
+}

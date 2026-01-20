@@ -1,0 +1,430 @@
+use serde::{Deserialize, Serialize};
+use std::fs::{self, File};
+use std::io::Read;
+use std::path::PathBuf;
+
+use crate::minecraft::instances::Instance;
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct InstalledMod {
+    pub filename: String,
+    pub name: Option<String>,
+    pub version: Option<String>,
+    pub enabled: bool,
+    pub project_id: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct ModMeta {
+    pub project_id: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct ResourcePack {
+    pub filename: String,
+    pub name: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct ShaderPack {
+    pub filename: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct World {
+    pub folder_name: String,
+    pub name: String,
+    pub last_played: Option<String>,
+    pub game_mode: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct Server {
+    pub name: String,
+    pub ip: String,
+    pub icon: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct Screenshot {
+    pub filename: String,
+    pub path: String,
+    pub date: Option<String>,
+}
+
+/// Get mods directory for an instance
+pub fn get_mods_dir(instance: &Instance) -> PathBuf {
+    instance.get_game_directory().join("mods")
+}
+
+/// Get resource packs directory for an instance
+pub fn get_resourcepacks_dir(instance: &Instance) -> PathBuf {
+    instance.get_game_directory().join("resourcepacks")
+}
+
+/// Get shader packs directory for an instance
+pub fn get_shaderpacks_dir(instance: &Instance) -> PathBuf {
+    instance.get_game_directory().join("shaderpacks")
+}
+
+/// Get saves directory for an instance
+pub fn get_saves_dir(instance: &Instance) -> PathBuf {
+    instance.get_game_directory().join("saves")
+}
+
+/// Get screenshots directory for an instance
+pub fn get_screenshots_dir(instance: &Instance) -> PathBuf {
+    instance.get_game_directory().join("screenshots")
+}
+
+/// Get logs directory for an instance
+pub fn get_logs_dir(instance: &Instance) -> PathBuf {
+    instance.get_game_directory().join("logs")
+}
+
+/// List installed mods
+pub fn list_mods(instance: &Instance) -> Vec<InstalledMod> {
+    let mods_dir = get_mods_dir(instance);
+    let mut mods = Vec::new();
+    
+    if !mods_dir.exists() {
+        return mods;
+    }
+    
+    if let Ok(entries) = fs::read_dir(&mods_dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            let filename = path.file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or("")
+                .to_string();
+            
+            if filename.ends_with(".jar") || filename.ends_with(".jar.disabled") {
+                let enabled = !filename.ends_with(".disabled");
+                
+                // Try to read project_id from metadata file
+                let base_filename = filename.trim_end_matches(".disabled");
+                let meta_path = mods_dir.join(format!("{}.meta.json", base_filename));
+                let project_id = if meta_path.exists() {
+                    fs::read_to_string(&meta_path)
+                        .ok()
+                        .and_then(|s| serde_json::from_str::<ModMeta>(&s).ok())
+                        .map(|m| m.project_id)
+                } else {
+                    None
+                };
+                
+                mods.push(InstalledMod {
+                    filename: filename.clone(),
+                    name: Some(filename.trim_end_matches(".disabled").trim_end_matches(".jar").to_string()),
+                    version: None,
+                    enabled,
+                    project_id,
+                });
+            }
+        }
+    }
+    
+    mods.sort_by(|a, b| a.filename.to_lowercase().cmp(&b.filename.to_lowercase()));
+    mods
+}
+
+/// Toggle mod enabled/disabled
+pub fn toggle_mod(instance: &Instance, filename: &str) -> Result<bool, String> {
+    let mods_dir = get_mods_dir(instance);
+    let current_path = mods_dir.join(filename);
+    
+    if !current_path.exists() {
+        return Err("Mod file not found".to_string());
+    }
+    
+    let new_path = if filename.ends_with(".disabled") {
+        mods_dir.join(filename.trim_end_matches(".disabled"))
+    } else {
+        mods_dir.join(format!("{}.disabled", filename))
+    };
+    
+    fs::rename(&current_path, &new_path).map_err(|e| e.to_string())?;
+    
+    Ok(!filename.ends_with(".disabled"))
+}
+
+/// Delete a mod
+pub fn delete_mod(instance: &Instance, filename: &str) -> Result<(), String> {
+    let mods_dir = get_mods_dir(instance);
+    let path = mods_dir.join(filename);
+    
+    if path.exists() {
+        fs::remove_file(&path).map_err(|e| e.to_string())?;
+    }
+    
+    Ok(())
+}
+
+/// List resource packs
+pub fn list_resourcepacks(instance: &Instance) -> Vec<ResourcePack> {
+    let dir = get_resourcepacks_dir(instance);
+    let mut packs = Vec::new();
+    
+    if !dir.exists() {
+        return packs;
+    }
+    
+    if let Ok(entries) = fs::read_dir(&dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            let filename = path.file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or("")
+                .to_string();
+            
+            if filename.ends_with(".zip") || path.is_dir() {
+                packs.push(ResourcePack {
+                    filename: filename.clone(),
+                    name: Some(filename.trim_end_matches(".zip").to_string()),
+                });
+            }
+        }
+    }
+    
+    packs
+}
+
+/// Delete a resource pack
+pub fn delete_resourcepack(instance: &Instance, filename: &str) -> Result<(), String> {
+    let dir = get_resourcepacks_dir(instance);
+    let path = dir.join(filename);
+    
+    if path.is_dir() {
+        fs::remove_dir_all(&path).map_err(|e| e.to_string())?;
+    } else if path.exists() {
+        fs::remove_file(&path).map_err(|e| e.to_string())?;
+    }
+    
+    Ok(())
+}
+
+/// List shader packs
+pub fn list_shaderpacks(instance: &Instance) -> Vec<ShaderPack> {
+    let dir = get_shaderpacks_dir(instance);
+    let mut packs = Vec::new();
+    
+    if !dir.exists() {
+        return packs;
+    }
+    
+    if let Ok(entries) = fs::read_dir(&dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            let filename = path.file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or("")
+                .to_string();
+            
+            if filename.ends_with(".zip") || path.is_dir() {
+                packs.push(ShaderPack { filename });
+            }
+        }
+    }
+    
+    packs
+}
+
+/// Delete a shader pack
+pub fn delete_shaderpack(instance: &Instance, filename: &str) -> Result<(), String> {
+    let dir = get_shaderpacks_dir(instance);
+    let path = dir.join(filename);
+    
+    if path.is_dir() {
+        fs::remove_dir_all(&path).map_err(|e| e.to_string())?;
+    } else if path.exists() {
+        fs::remove_file(&path).map_err(|e| e.to_string())?;
+    }
+    
+    Ok(())
+}
+
+/// List worlds
+pub fn list_worlds(instance: &Instance) -> Vec<World> {
+    let saves_dir = get_saves_dir(instance);
+    let mut worlds = Vec::new();
+    
+    if !saves_dir.exists() {
+        return worlds;
+    }
+    
+    if let Ok(entries) = fs::read_dir(&saves_dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if !path.is_dir() {
+                continue;
+            }
+            
+            let folder_name = path.file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or("")
+                .to_string();
+            
+            // Try to read level.dat for world name (simplified - just use folder name)
+            let level_dat = path.join("level.dat");
+            if level_dat.exists() {
+                worlds.push(World {
+                    folder_name: folder_name.clone(),
+                    name: folder_name,
+                    last_played: None,
+                    game_mode: None,
+                });
+            }
+        }
+    }
+    
+    worlds
+}
+
+/// Delete a world
+pub fn delete_world(instance: &Instance, folder_name: &str) -> Result<(), String> {
+    let saves_dir = get_saves_dir(instance);
+    let path = saves_dir.join(folder_name);
+    
+    if path.is_dir() {
+        fs::remove_dir_all(&path).map_err(|e| e.to_string())?;
+    }
+    
+    Ok(())
+}
+
+/// List screenshots
+pub fn list_screenshots(instance: &Instance) -> Vec<Screenshot> {
+    let dir = get_screenshots_dir(instance);
+    let mut screenshots = Vec::new();
+    
+    if !dir.exists() {
+        return screenshots;
+    }
+    
+    if let Ok(entries) = fs::read_dir(&dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            let filename = path.file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or("")
+                .to_string();
+            
+            if filename.ends_with(".png") {
+                screenshots.push(Screenshot {
+                    filename: filename.clone(),
+                    path: path.to_string_lossy().to_string(),
+                    date: None,
+                });
+            }
+        }
+    }
+    
+    screenshots.sort_by(|a, b| b.filename.cmp(&a.filename)); // Newest first
+    screenshots
+}
+
+/// Delete a screenshot
+pub fn delete_screenshot(instance: &Instance, filename: &str) -> Result<(), String> {
+    let dir = get_screenshots_dir(instance);
+    let path = dir.join(filename);
+    
+    if path.exists() {
+        fs::remove_file(&path).map_err(|e| e.to_string())?;
+    }
+    
+    Ok(())
+}
+
+/// Get latest log content
+pub fn get_latest_log(instance: &Instance) -> Result<String, String> {
+    let logs_dir = get_logs_dir(instance);
+    let latest_log = logs_dir.join("latest.log");
+    
+    if !latest_log.exists() {
+        return Ok("No log file found.".to_string());
+    }
+    
+    let mut file = File::open(&latest_log).map_err(|e| e.to_string())?;
+    let mut content = String::new();
+    file.read_to_string(&mut content).map_err(|e| e.to_string())?;
+    
+    // Return last 5000 lines max
+    let lines: Vec<&str> = content.lines().collect();
+    let start = lines.len().saturating_sub(5000);
+    Ok(lines[start..].join("\n"))
+}
+
+/// Read servers.dat NBT file
+pub fn list_servers(instance: &Instance) -> Vec<Server> {
+    let servers_dat = instance.get_game_directory().join("servers.dat");
+    
+    if !servers_dat.exists() {
+        return vec![];
+    }
+    
+    // Try to parse NBT
+    match std::fs::read(&servers_dat) {
+        Ok(data) => {
+            // servers.dat is uncompressed NBT
+            match fastnbt::from_bytes::<ServersNbt>(&data) {
+                Ok(nbt) => {
+                    nbt.servers.into_iter().map(|s| Server {
+                        name: s.name.unwrap_or_else(|| "Unnamed Server".to_string()),
+                        ip: s.ip,
+                        icon: s.icon,
+                    }).collect()
+                }
+                Err(e) => {
+                    log::warn!("Failed to parse servers.dat: {}", e);
+                    vec![]
+                }
+            }
+        }
+        Err(e) => {
+            log::warn!("Failed to read servers.dat: {}", e);
+            vec![]
+        }
+    }
+}
+
+#[derive(Debug, serde::Deserialize)]
+struct ServersNbt {
+    servers: Vec<ServerEntry>,
+}
+
+#[derive(Debug, serde::Deserialize)]
+struct ServerEntry {
+    name: Option<String>,
+    ip: String,
+    icon: Option<String>,
+}
+
+/// Open folder in system file manager
+pub fn open_folder(path: &PathBuf) -> Result<(), String> {
+    #[cfg(target_os = "linux")]
+    {
+        std::process::Command::new("xdg-open")
+            .arg(path)
+            .spawn()
+            .map_err(|e| e.to_string())?;
+    }
+    
+    #[cfg(target_os = "windows")]
+    {
+        std::process::Command::new("explorer")
+            .arg(path)
+            .spawn()
+            .map_err(|e| e.to_string())?;
+    }
+    
+    #[cfg(target_os = "macos")]
+    {
+        std::process::Command::new("open")
+            .arg(path)
+            .spawn()
+            .map_err(|e| e.to_string())?;
+    }
+    
+    Ok(())
+}

@@ -9,7 +9,7 @@ use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Arc;
 use tauri::{AppHandle, Emitter};
 use futures::stream::{self, StreamExt};
-use crate::{log_info, log_error, log_warn};
+use crate::log_info;
 
 // Number of concurrent downloads
 const CONCURRENT_DOWNLOADS: usize = 32;

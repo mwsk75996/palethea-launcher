@@ -1,7 +1,6 @@
 mod minecraft;
 
 use minecraft::{versions, downloader, instances, launcher, settings, auth, modrinth, files, fabric, forge, java, logger};
-use crate::minecraft::logger::emit_log;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;

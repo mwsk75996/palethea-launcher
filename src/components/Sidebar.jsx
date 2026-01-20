@@ -4,14 +4,14 @@ import './Sidebar.css';
 // Steve head as a data URL fallback (8x8 Steve face)
 const STEVE_HEAD_DATA = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAgAAAAICAIAAABLbSncAAAARklEQVQI12NgoAbghLD+I4kwBqOjo+O/f/8YGBj+MzD8Z2D4z8Dwnwmq7P9/BoYL5y8g0/8hHP7/x0b/Y2D4D5b5/58ZAME2EVcxlvGVAAAAAElFTkSuQmCC';
 
-function Sidebar({ 
-  activeTab, 
-  onTabChange, 
-  accounts, 
-  activeAccount, 
-  onSwitchAccount, 
-  onAddAccount, 
-  onRemoveAccount, 
+function Sidebar({
+  activeTab,
+  onTabChange,
+  accounts,
+  activeAccount,
+  onSwitchAccount,
+  onAddAccount,
+  onRemoveAccount,
   skinRefreshKey,
   currentSkinTexture,
   skinCache = {}
@@ -21,33 +21,34 @@ function Sidebar({
 
   const SkinHead2D = ({ src, size = 32 }) => (
     <div className="sidebar-head-2d" style={{ width: `${size}px`, height: `${size}px` }}>
-      <div 
-        className="head-base" 
-        style={{ 
+      <div
+        className="head-base"
+        style={{
           backgroundImage: `url("${src}")`,
           width: `${size}px`,
           height: `${size}px`,
           backgroundSize: `${size * 8}px auto`,
           backgroundPosition: `-${size}px -${size}px`
-        }} 
+        }}
       ></div>
-      <div 
-        className="head-overlay" 
-        style={{ 
+      <div
+        className="head-overlay"
+        style={{
           backgroundImage: `url("${src}")`,
           width: `${size}px`,
           height: `${size}px`,
           backgroundSize: `${size * 8}px auto`,
           backgroundPosition: `-${size * 5}px -${size}px`
-        }} 
+        }}
       ></div>
     </div>
   );
-  
+
   const tabs = [
     { id: 'instances', label: 'Instances', icon: null },
     { id: 'skins', label: 'Skins', icon: null },
     { id: 'updates', label: 'Updates', icon: null },
+    { id: 'console', label: 'Console', icon: null },
     { id: 'settings', label: 'Settings', icon: null },
   ];
 
@@ -80,7 +81,7 @@ function Sidebar({
           <span className="logo-text">Palethea</span>
         </a>
       </div>
-      
+
       <nav className="sidebar-nav">
         {tabs.map((tab) => (
           <button
@@ -92,9 +93,9 @@ function Sidebar({
           </button>
         ))}
       </nav>
-      
+
       <div className="sidebar-footer">
-        <div 
+        <div
           className="user-info"
           onClick={() => setShowAccountMenu(!showAccountMenu)}
         >
@@ -102,9 +103,9 @@ function Sidebar({
             {currentSkinTexture ? (
               <SkinHead2D src={currentSkinTexture} size={32} />
             ) : (
-              <img 
-                src={getSkinUrl(activeAccount?.uuid, activeAccount?.isLoggedIn)} 
-                alt="" 
+              <img
+                src={getSkinUrl(activeAccount?.uuid, activeAccount?.isLoggedIn)}
+                alt=""
                 className="skin-head"
                 onError={(e) => {
                   e.target.src = STEVE_HEAD_DATA;
@@ -119,7 +120,7 @@ function Sidebar({
           </div>
           <span className="account-expand">▾</span>
         </div>
-        
+
         {showAccountMenu && (
           <div className="account-menu">
             <div className="account-menu-header">Accounts</div>
@@ -128,7 +129,7 @@ function Sidebar({
                 key={index}
                 className={`account-option ${account.username === activeAccount?.username ? 'active' : ''}`}
               >
-                <div 
+                <div
                   className="account-option-main"
                   onClick={() => {
                     onSwitchAccount(account);
@@ -139,9 +140,9 @@ function Sidebar({
                     {skinCache[account.uuid] ? (
                       <SkinHead2D src={skinCache[account.uuid]} size={24} />
                     ) : (
-                      <img 
-                        src={getSkinUrl(account.uuid, account.isLoggedIn)} 
-                        alt="" 
+                      <img
+                        src={getSkinUrl(account.uuid, account.isLoggedIn)}
+                        alt=""
                         className="skin-head-small"
                         onError={(e) => {
                           e.target.src = STEVE_HEAD_DATA;
@@ -158,7 +159,7 @@ function Sidebar({
                     <span className="account-check">✓</span>
                   )}
                 </div>
-                <button 
+                <button
                   className="account-remove"
                   onClick={(e) => {
                     e.stopPropagation();

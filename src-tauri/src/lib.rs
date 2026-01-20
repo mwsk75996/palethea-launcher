@@ -1,6 +1,7 @@
 mod minecraft;
 
-use minecraft::{versions, downloader, instances, launcher, settings, auth, modrinth, files, fabric, forge, java};
+use minecraft::{versions, downloader, instances, launcher, settings, auth, modrinth, files, fabric, forge, java, logger};
+use crate::minecraft::logger::emit_log;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
@@ -37,6 +38,11 @@ pub struct VersionListItem {
     pub id: String,
     pub version_type: String,
     pub release_time: String,
+}
+
+#[tauri::command]
+fn log_event(level: String, message: String, app_handle: AppHandle) {
+    logger::emit_log(&app_handle, &level, &message);
 }
 
 // ============== VERSION COMMANDS ==============
@@ -233,13 +239,16 @@ fn is_version_downloaded(version_id: String) -> bool {
 async fn launch_instance(
     instance_id: String,
     state: State<'_, AppState>,
+    app_handle: tauri::AppHandle,
 ) -> Result<String, String> {
     let instance = instances::get_instance(&instance_id)?;
+    log_info!(&app_handle, "Preparing to launch instance: {}", instance.name);
     
     // Check if this instance is already running
     {
         let processes = RUNNING_PROCESSES.lock().map_err(|_| "Process state corrupted")?;
         if processes.contains_key(&instance_id) {
+            log_warn!(&app_handle, "Instance {} is already running", instance.name);
             return Err("This instance is already running".to_string());
         }
     }
@@ -285,6 +294,8 @@ async fn launch_instance(
     
     // Spawn a background thread to track playtime
     let instance_id_clone = instance_id.clone();
+    let app_handle_clone = app_handle.clone();
+    let instance_name = instance.name.clone();
     std::thread::spawn(move || {
         // Wait for the game to exit
         if let Ok(status) = child.wait() {
@@ -308,6 +319,7 @@ async fn launch_instance(
                 processes.remove(&instance_id_clone);
             }
             
+            log_info!(&app_handle_clone, "Instance {} exited with status: {:?}, session duration: {}s", instance_name, status, session_duration);
             log::info!("Game exited with status: {:?}, session: {}s", status, session_duration);
         }
     });
@@ -1260,6 +1272,7 @@ pub fn run() {
             add_to_skin_collection,
             delete_skin_from_collection,
             get_skin_file_path,
+            log_event,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

@@ -9,3 +9,4 @@ pub mod files;
 pub mod fabric;
 pub mod forge;
 pub mod java;
+pub mod logger;

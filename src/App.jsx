@@ -12,6 +12,7 @@ import ContextMenu from './components/ContextMenu';
 import LoginPrompt from './components/LoginPrompt';
 import ConfirmModal from './components/ConfirmModal';
 import Updates from './components/Updates';
+import Console from './components/Console';
 import './App.css';
 
 function App() {
@@ -107,7 +108,7 @@ function App() {
     try {
       // Load saved accounts from Rust backend
       const savedData = await invoke('get_saved_accounts');
-      
+
       if (!savedData.accounts || savedData.accounts.length === 0) {
         // No saved accounts, show login prompt
         setShowLoginPrompt(true);
@@ -115,25 +116,25 @@ function App() {
         setAccounts([]);
         return;
       }
-      
+
       // Convert saved accounts to UI format
       const uiAccounts = savedData.accounts.map(a => ({
         username: a.username,
         isLoggedIn: a.is_microsoft,
         uuid: a.uuid
       }));
-      
+
       setAccounts(uiAccounts);
-      
+
       // Find active account
       const activeUsername = savedData.active_account || savedData.accounts[0]?.username;
       const activeAcc = savedData.accounts.find(a => a.username === activeUsername);
-      
+
       if (activeAcc) {
         // Validate/refresh Microsoft account
         if (activeAcc.is_microsoft) {
           const isValid = await invoke('validate_account', { accessToken: activeAcc.access_token });
-          
+
           if (!isValid) {
             // Try to refresh the token
             try {
@@ -157,7 +158,7 @@ function App() {
               // Remove invalid account
               await invoke('remove_saved_account', { username: activeAcc.username });
               showNotification(`Session expired for ${activeAcc.username}. Please login again.`, 'warning');
-              
+
               // Update accounts list
               const updatedData = await invoke('get_saved_accounts');
               const updatedAccounts = (updatedData.accounts || []).map(a => ({
@@ -166,7 +167,7 @@ function App() {
                 uuid: a.uuid
               }));
               setAccounts(updatedAccounts);
-              
+
               if (updatedAccounts.length === 0) {
                 setShowLoginPrompt(true);
                 setActiveAccount({ username: 'Player', isLoggedIn: false, uuid: null });
@@ -184,7 +185,7 @@ function App() {
             }
           }
         }
-        
+
         // Switch to active account in backend
         await invoke('switch_account', { username: activeAcc.username });
         setActiveAccount({
@@ -205,10 +206,10 @@ function App() {
     loadInstances();
     loadAccounts();
     loadRunningInstances();
-    
+
     // Poll running instances periodically (process state can change without events)
     const runningPoll = setInterval(loadRunningInstances, 2000);
-    
+
     // Disable default right-click unless Ctrl is pressed
     const handleContextMenu = (e) => {
       if (!e.ctrlKey) {
@@ -216,19 +217,19 @@ function App() {
       }
     };
     document.addEventListener('contextmenu', handleContextMenu);
-    
+
     // Listen for download progress events
     const unlisten = listen('download-progress', (event) => {
       const { stage, percentage } = event.payload;
       setLoadingStatus(stage);
       setLoadingProgress(percentage);
     });
-    
+
     // Listen for instance refresh events from backend
     const unlistenRefresh = listen('refresh-instances', () => {
       loadInstances();
     });
-    
+
     return () => {
       clearInterval(runningPoll);
       unlisten.then(fn => fn());
@@ -261,7 +262,7 @@ function App() {
   const handleContextMenuAction = async (action) => {
     const instance = contextMenu?.instance;
     setContextMenu(null);
-    
+
     switch (action) {
       case 'play':
         if (instance) handleLaunchInstance(instance.id);
@@ -320,17 +321,17 @@ function App() {
       setLoadingStatus('Creating instance...');
       setLoadingProgress(5);
       const newInstance = await invoke('create_instance', { name, versionId });
-      
+
       setLoadingStatus(`Downloading Minecraft ${versionId}...`);
       await invoke('download_version', { versionId });
-      
+
       setLoadingProgress(80);
-      
+
       // Install mod loader if not vanilla
       if (modLoader !== 'vanilla') {
         setLoadingStatus(`Installing ${modLoader}...`);
         setLoadingProgress(90);
-        
+
         if (modLoader === 'fabric') {
           try {
             const loaderVersions = modLoaderVersion ? [modLoaderVersion] : await invoke('get_loader_versions', {
@@ -338,10 +339,10 @@ function App() {
               gameVersion: versionId
             });
             const loaderVersion = modLoaderVersion || (loaderVersions && loaderVersions[0]);
-            
+
             if (loaderVersion) {
-              await invoke('install_fabric', { 
-                instanceId: newInstance.id, 
+              await invoke('install_fabric', {
+                instanceId: newInstance.id,
                 loaderVersion
               });
             } else {
@@ -358,10 +359,10 @@ function App() {
               gameVersion: versionId
             });
             const loaderVersion = modLoaderVersion || (loaderVersions && loaderVersions[0]);
-            
+
             if (loaderVersion) {
-              await invoke('install_forge', { 
-                instanceId: newInstance.id, 
+              await invoke('install_forge', {
+                instanceId: newInstance.id,
                 loaderVersion
               });
             } else {
@@ -378,10 +379,10 @@ function App() {
               gameVersion: versionId
             });
             const loaderVersion = modLoaderVersion || (loaderVersions && loaderVersions[0]);
-            
+
             if (loaderVersion) {
-              await invoke('install_neoforge', { 
-                instanceId: newInstance.id, 
+              await invoke('install_neoforge', {
+                instanceId: newInstance.id,
                 loaderVersion
               });
             } else {
@@ -393,7 +394,7 @@ function App() {
           }
         }
       }
-      
+
       setLoadingProgress(100);
       await loadInstances();
       setActiveTab('instances');
@@ -456,7 +457,7 @@ function App() {
       await invoke('set_offline_user', { username: newUsername });
       const newAccount = { username: newUsername, isLoggedIn: false, uuid: null };
       setActiveAccount(newAccount);
-      
+
       // Add to accounts list if not exists
       const savedAccounts = JSON.parse(localStorage.getItem('palethea_accounts') || '[]');
       if (!savedAccounts.find(a => a.username === newUsername)) {
@@ -464,7 +465,7 @@ function App() {
         localStorage.setItem('palethea_accounts', JSON.stringify(savedAccounts));
         setAccounts(savedAccounts);
       }
-      
+
       showNotification(`Username set to "${newUsername}"`, 'success');
     } catch (error) {
       showNotification(`Failed to set username: ${error}`, 'error');
@@ -480,16 +481,20 @@ function App() {
       uuid: a.uuid
     }));
     setAccounts(uiAccounts);
-    
+
     const account = savedData.accounts.find(a => a.username === newUsername);
     if (account) {
-      setActiveAccount({
+      const newActiveAccount = {
         username: account.username,
         isLoggedIn: account.is_microsoft,
         uuid: account.uuid
-      });
+      };
+      setActiveAccount(newActiveAccount);
+
+      // Load skin immediately after login
+      loadSkinForAccount(account.is_microsoft, account.uuid);
     }
-    
+
     showNotification(`Signed in as ${newUsername}`, 'success');
   };
 
@@ -539,7 +544,7 @@ function App() {
         uuid: a.uuid
       }));
       setAccounts(updatedAccounts);
-      
+
       // If removed active account, switch to another or show login
       if (activeAccount?.username === username) {
         if (updatedAccounts.length > 0) {
@@ -613,8 +618,8 @@ function App() {
         );
       case 'skins':
         return (
-          <SkinManager 
-            activeAccount={activeAccount} 
+          <SkinManager
+            activeAccount={activeAccount}
             showNotification={showNotification}
             onSkinChange={(url) => {
               setSkinRefreshKey(Date.now());
@@ -632,6 +637,8 @@ function App() {
         );
       case 'updates':
         return <Updates />;
+      case 'console':
+        return <Console />;
       default:
         return null;
     }
@@ -697,22 +704,22 @@ function App() {
           </div>
         </div>
       )}
-      
-      
+
+
       {notification && (
         <div className={`notification notification-${notification.type}`}>
           {notification.message}
         </div>
       )}
-      
+
       {isLoading && (
         <div className="loading-overlay">
           <div className="loading-content">
             <div className="loading-spinner"></div>
             {loadingStatus && <p className="loading-status">{loadingStatus}</p>}
             <div className="progress-bar-container">
-              <div 
-                className="progress-bar-fill" 
+              <div
+                className="progress-bar-fill"
                 style={{ width: `${loadingProgress}%` }}
               />
             </div>
@@ -720,7 +727,7 @@ function App() {
           </div>
         </div>
       )}
-      
+
       {contextMenu && (
         <ContextMenu
           x={contextMenu.x}
@@ -729,7 +736,7 @@ function App() {
           onAction={handleContextMenuAction}
         />
       )}
-      
+
       {showLoginPrompt && (
         <LoginPrompt
           onLogin={async (username) => {
@@ -743,7 +750,7 @@ function App() {
           }}
         />
       )}
-      
+
       {confirmModal && (
         <ConfirmModal
           title={confirmModal.title}

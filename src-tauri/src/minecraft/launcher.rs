@@ -135,10 +135,142 @@ fn find_java8() -> Option<PathBuf> {
     None
 }
 
+/// Find a Java installation with a specific major version
+fn find_java_by_version(required_major: u32) -> Option<PathBuf> {
+    let java_name = if cfg!(target_os = "windows") { "java.exe" } else { "java" };
+    
+    // Common Java installation paths
+    let common_paths = if cfg!(target_os = "windows") {
+        vec![
+            "C:\\Program Files\\Java",
+            "C:\\Program Files (x86)\\Java",
+            "C:\\Program Files\\Eclipse Adoptium",
+            "C:\\Program Files\\Microsoft",
+            "C:\\Program Files\\Zulu",
+            "C:\\Program Files\\BellSoft",
+        ]
+    } else if cfg!(target_os = "macos") {
+        vec![
+            "/Library/Java/JavaVirtualMachines",
+            "/usr/local/opt/openjdk/bin",
+            "/opt/homebrew/opt/openjdk",
+        ]
+    } else {
+        vec![
+            "/usr/lib/jvm",
+            "/usr/java",
+            "/opt/java",
+        ]
+    };
+    
+    let mut candidates: Vec<(PathBuf, u32)> = Vec::new();
+    
+    // Check JAVA_HOME first
+    if let Ok(java_home) = std::env::var("JAVA_HOME") {
+        let java_path = PathBuf::from(&java_home).join("bin").join(java_name);
+        if java_path.exists() {
+            if let Some(major) = get_java_major(&java_path) {
+                candidates.push((java_path, major));
+            }
+        }
+    }
+    
+    // Search common paths
+    for base_path in common_paths {
+        let base = PathBuf::from(base_path);
+        if base.exists() {
+            if let Ok(entries) = fs::read_dir(&base) {
+                for entry in entries.flatten() {
+                    // Check both direct bin/java and JDK structure (e.g., jdk-21/Contents/Home/bin/java on macOS)
+                    let paths_to_check = vec![
+                        entry.path().join("bin").join(java_name),
+                        entry.path().join("Contents/Home/bin").join(java_name),
+                    ];
+                    
+                    for java_path in paths_to_check {
+                        if java_path.exists() {
+                            if let Some(major) = get_java_major(&java_path) {
+                                candidates.push((java_path, major));
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
+    // First try to find exact match
+    for (path, major) in &candidates {
+        if *major == required_major {
+            return Some(path.clone());
+        }
+    }
+    
+    // Then find any version >= required
+    for (path, major) in &candidates {
+        if *major >= required_major {
+            return Some(path.clone());
+        }
+    }
+    
+    None
+}
+
 fn select_java_for_launch(instance: &Instance, version_details: &VersionDetails) -> Result<PathBuf, String> {
-    let requested = instance.java_path.as_ref()
+    // If instance has a specific Java path set, use that
+    if let Some(java_path) = &instance.java_path {
+        let path = PathBuf::from(java_path);
+        if path.exists() {
+            return Ok(path);
+        }
+    }
+    
+    // Check if version requires a specific Java version
+    if let Some(java_version) = &version_details.java_version {
+        let required_major = java_version.major_version as u32;
+        
+        // First check global settings Java
+        if let Some(settings_java) = settings::get_java_path() {
+            let settings_path = PathBuf::from(&settings_java);
+            if settings_path.exists() {
+                if let Some(major) = get_java_major(&settings_path) {
+                    if major >= required_major {
+                        return Ok(settings_path);
+                    }
+                    // Settings Java exists but wrong version, try to find correct one
+                    log::info!("Settings Java is version {}, but {} requires Java {}", major, version_details.id, required_major);
+                }
+            }
+        }
+        
+        // Try to find a Java that meets the requirement
+        if let Some(java_path) = find_java_by_version(required_major) {
+            log::info!("Found Java {} for Minecraft {}", required_major, version_details.id);
+            return Ok(java_path);
+        }
+        
+        // Fall back to any Java if we can't find the right version
+        if let Some(java_path) = find_java() {
+            if let Some(major) = get_java_major(&java_path) {
+                if major < required_major {
+                    return Err(format!(
+                        "Minecraft {} requires Java {} or newer, but only Java {} was found. Please install Java {}.",
+                        version_details.id, required_major, major, required_major
+                    ));
+                }
+            }
+            return Ok(java_path);
+        }
+        
+        return Err(format!(
+            "Java {} not found. Minecraft {} requires Java {} or newer. Please install it.",
+            required_major, version_details.id, required_major
+        ));
+    }
+    
+    // Fallback for versions without java_version info (legacy)
+    let requested = settings::get_java_path()
         .map(PathBuf::from)
-        .or_else(|| settings::get_java_path().map(PathBuf::from))
         .or_else(find_java)
         .ok_or("Java not found. Please install Java or specify the path in settings.")?;
 

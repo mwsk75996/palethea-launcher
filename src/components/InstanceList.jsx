@@ -6,7 +6,7 @@ import './InstanceList.css';
 
 function InstanceList({ instances, onLaunch, onStop, onDelete, onEdit, onCreate, onContextMenu, isLoading, runningInstances = [] }) {
   const [logoMap, setLogoMap] = useState({});
-  
+
   // Create a stable key that only changes when logos actually change
   const logoKey = useMemo(() => {
     return instances.map(i => `${i.id}:${i.logo_filename || 'default'}`).join(',');
@@ -81,7 +81,7 @@ function InstanceList({ instances, onLaunch, onStop, onDelete, onEdit, onCreate,
           + New Instance
         </button>
       </div>
-      
+
       {instances.length === 0 ? (
         <div className="empty-state">
           <h2>No instances yet</h2>
@@ -93,8 +93,8 @@ function InstanceList({ instances, onLaunch, onStop, onDelete, onEdit, onCreate,
       ) : (
         <div className="instances-grid">
           {instances.map((instance) => (
-            <div 
-              key={instance.id} 
+            <div
+              key={instance.id}
               className="instance-card"
               onContextMenu={(e) => {
                 e.preventDefault();
@@ -104,10 +104,19 @@ function InstanceList({ instances, onLaunch, onStop, onDelete, onEdit, onCreate,
             >
               <div className="instance-logo">
                 {logoMap[instance.id] ? (
-                  <img src={logoMap[instance.id]} alt="" />
-                ) : (
-                  <div className="instance-logo-fallback" />
-                )}
+                  <img
+                    src={logoMap[instance.id]}
+                    alt=""
+                    onError={(e) => {
+                      e.target.style.display = 'none';
+                      e.target.nextSibling.style.display = 'block';
+                    }}
+                  />
+                ) : null}
+                <div
+                  className="instance-logo-fallback"
+                  style={{ display: logoMap[instance.id] ? 'none' : 'block' }}
+                />
               </div>
               <div className="instance-info">
                 <div className="instance-title">

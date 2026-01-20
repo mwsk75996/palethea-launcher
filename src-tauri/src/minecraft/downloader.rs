@@ -9,6 +9,7 @@ use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Arc;
 use tauri::{AppHandle, Emitter};
 use futures::stream::{self, StreamExt};
+use crate::{log_info, log_error, log_warn};
 
 // Number of concurrent downloads
 const CONCURRENT_DOWNLOADS: usize = 32;
@@ -404,6 +405,7 @@ pub async fn download_assets(version_details: &VersionDetails, app_handle: Optio
 pub async fn download_version(version_id: &str, app_handle: Option<&AppHandle>) -> Result<VersionDetails, Box<dyn Error + Send + Sync>> {
     // Emit initial progress
     if let Some(handle) = app_handle {
+        log_info!(handle, "Starting download for version: {}", version_id);
         let _ = handle.emit("download-progress", DownloadProgress {
             stage: "Fetching version info...".to_string(),
             current: 0,
@@ -426,6 +428,7 @@ pub async fn download_version(version_id: &str, app_handle: Option<&AppHandle>) 
     
     // Download client (5%)
     if let Some(handle) = app_handle {
+        log_info!(handle, "Downloading client JAR...");
         let _ = handle.emit("download-progress", DownloadProgress {
             stage: "Downloading client JAR...".to_string(),
             current: 5,
@@ -437,6 +440,7 @@ pub async fn download_version(version_id: &str, app_handle: Option<&AppHandle>) 
     
     // Download libraries (5-35%)
     if let Some(handle) = app_handle {
+        log_info!(handle, "Downloading libraries...");
         let _ = handle.emit("download-progress", DownloadProgress {
             stage: "Downloading libraries...".to_string(),
             current: 10,
@@ -448,6 +452,7 @@ pub async fn download_version(version_id: &str, app_handle: Option<&AppHandle>) 
     
     // Download assets (35-100%)
     if let Some(handle) = app_handle {
+        log_info!(handle, "Downloading assets...");
         let _ = handle.emit("download-progress", DownloadProgress {
             stage: "Downloading assets...".to_string(),
             current: 35,
@@ -459,6 +464,7 @@ pub async fn download_version(version_id: &str, app_handle: Option<&AppHandle>) 
     
     // Complete
     if let Some(handle) = app_handle {
+        log_info!(handle, "Download complete for version: {}", version_id);
         let _ = handle.emit("download-progress", DownloadProgress {
             stage: "Complete!".to_string(),
             current: 100,

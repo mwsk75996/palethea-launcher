@@ -6,7 +6,7 @@ import { relaunch } from '@tauri-apps/plugin-process';
 import './Updates.css';
 
 function Updates() {
-  const [currentVersion, setCurrentVersion] = useState('0.1.1');
+  const [currentVersion, setCurrentVersion] = useState('0.1.2');
   const [updateInfo, setUpdateInfo] = useState(null);
   const [isChecking, setIsChecking] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);

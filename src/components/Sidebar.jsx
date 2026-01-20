@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { open } from '@tauri-apps/plugin-shell';
 import './Sidebar.css';
 
 // Steve head as a data URL fallback (8x8 Steve face)
@@ -72,14 +73,13 @@ function Sidebar({
   return (
     <aside className="sidebar">
       <div className="sidebar-header">
-        <a
+        <div
           className="logo"
-          href="https://palethea.com"
-          target="_blank"
-          rel="noreferrer"
+          onClick={() => open('https://palethea.com')}
+          style={{ cursor: 'pointer' }}
         >
           <span className="logo-text">Palethea</span>
-        </a>
+        </div>
       </div>
 
       <nav className="sidebar-nav">

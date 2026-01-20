@@ -1,7 +1,7 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "PaletheaLauncher",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "identifier": "com.palethea.launcher",
   "build": {
     "frontendDist": "../dist",
@@ -59,6 +59,16 @@
         "https://github.com/mwsk75996/palethea-launcher/releases/latest/download/latest.json"
       ],
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDJCNENGMjAwNTE4NDk2NjAKUldSZ2xvUlJBUEpNS3lBVDl6aWlndFpFb29ZQU0wdEpCL1BSRlBiQzJVRVJTZHRWQUcxMm9rd24K"
+    },
+    "shell": {
+      "open": [
+        {
+          "schemes": [
+            "https",
+            "http"
+          ]
+        }
+      ]
     }
   }
 }

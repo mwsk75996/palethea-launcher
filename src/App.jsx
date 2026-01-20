@@ -34,6 +34,7 @@ function App() {
   const [skinRefreshKey, setSkinRefreshKey] = useState(Date.now());
   const [currentSkinUrl, setCurrentSkinUrl] = useState(null);
   const [skinCache, setSkinCache] = useState({});
+  const [logs, setLogs] = useState([]);
 
   useEffect(() => {
     // Load all cached skins on startup
@@ -218,9 +219,26 @@ function App() {
     };
     document.addEventListener('contextmenu', handleContextMenu);
 
+    // Listen for log events from Rust backend
+    const unlistenLog = listen('app-log', (event) => {
+      const { level, message, timestamp } = event.payload;
+      setLogs(prev => [...prev.slice(-499), {
+        id: Date.now() + Math.random(),
+        level,
+        message,
+        timestamp: timestamp || new Date().toISOString()
+      }]);
+    });
+
     // Listen for download progress events
-    const unlisten = listen('download-progress', (event) => {
+    const unlistenProgress = listen('download-progress', (event) => {
       const { stage, percentage } = event.payload;
+      setLogs(prev => [...prev.slice(-499), {
+        id: Date.now() + Math.random(),
+        level: 'info',
+        message: `[Download] ${stage} (${percentage}%)`,
+        timestamp: new Date().toISOString()
+      }]);
       setLoadingStatus(stage);
       setLoadingProgress(percentage);
     });
@@ -232,7 +250,8 @@ function App() {
 
     return () => {
       clearInterval(runningPoll);
-      unlisten.then(fn => fn());
+      unlistenLog.then(fn => fn());
+      unlistenProgress.then(fn => fn());
       unlistenRefresh.then(fn => fn());
       document.removeEventListener('contextmenu', handleContextMenu);
     };
@@ -638,7 +657,7 @@ function App() {
       case 'updates':
         return <Updates />;
       case 'console':
-        return <Console />;
+        return <Console logs={logs} setLogs={setLogs} />;
       default:
         return null;
     }

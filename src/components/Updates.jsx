@@ -1,11 +1,12 @@
 import { useState, useEffect } from 'react';
 import { getVersion } from '@tauri-apps/api/app';
+import { invoke } from '@tauri-apps/api/core';
 import { check } from '@tauri-apps/plugin-updater';
 import { relaunch } from '@tauri-apps/plugin-process';
 import './Updates.css';
 
 function Updates() {
-  const [currentVersion, setCurrentVersion] = useState('0.1.0');
+  const [currentVersion, setCurrentVersion] = useState('0.1.1');
   const [updateInfo, setUpdateInfo] = useState(null);
   const [isChecking, setIsChecking] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
@@ -17,6 +18,7 @@ function Updates() {
     setIsChecking(true);
     setError(null);
     try {
+      await invoke('log_event', { level: 'info', message: 'Checking for updates...' });
       // Get the version from the actual Tauri app
       const version = await getVersion();
       setCurrentVersion(version);
@@ -25,15 +27,18 @@ function Updates() {
       const update = await check();
 
       if (update) {
+        await invoke('log_event', { level: 'info', message: `Update found: v${update.version}` });
         setUpdateInfo({
           version: update.version,
           body: update.body,
           date: update.date,
         });
       } else {
+        await invoke('log_event', { level: 'info', message: 'No updates found. App is up to date.' });
         setUpdateInfo(null);
       }
     } catch (err) {
+      await invoke('log_event', { level: 'error', message: `Update check failed: ${err.toString()}` });
       console.error('Failed to check updates:', err);
       setError('Could not check for updates. Please try again later.');
     } finally {

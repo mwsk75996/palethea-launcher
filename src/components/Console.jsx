@@ -3,47 +3,20 @@ import { listen } from '@tauri-apps/api/event';
 import { invoke } from '@tauri-apps/api/core';
 import './Console.css';
 
-function Console() {
-    const [logs, setLogs] = useState([]);
+function Console({ logs, setLogs }) {
     const [filter, setFilter] = useState('all'); // all, info, warn, error
     const [autoScroll, setAutoScroll] = useState(true);
     const consoleRef = useRef(null);
 
     useEffect(() => {
-        // Listen for log events from Rust backend
-        const unlistenLog = listen('app-log', (event) => {
-            const { level, message, timestamp } = event.payload;
-            setLogs(prev => [...prev.slice(-500), { // Keep last 500 logs
-                id: Date.now() + Math.random(),
-                level,
-                message,
-                timestamp: timestamp || new Date().toISOString()
-            }]);
-        });
-
-        // Listen for download progress events
-        const unlistenProgress = listen('download-progress', (event) => {
-            const { stage, percentage } = event.payload;
-            setLogs(prev => [...prev.slice(-500), {
-                id: Date.now() + Math.random(),
+        if (logs.length === 0) {
+            setLogs([{
+                id: Date.now(),
                 level: 'info',
-                message: `[Download] ${stage} (${percentage}%)`,
+                message: 'Console initialized. Logs will appear here.',
                 timestamp: new Date().toISOString()
             }]);
-        });
-
-        // Add initial log
-        setLogs([{
-            id: Date.now(),
-            level: 'info',
-            message: 'Console initialized. Logs will appear here.',
-            timestamp: new Date().toISOString()
-        }]);
-
-        return () => {
-            unlistenLog.then(fn => fn());
-            unlistenProgress.then(fn => fn());
-        };
+        }
     }, []);
 
     // Auto-scroll to bottom when new logs arrive

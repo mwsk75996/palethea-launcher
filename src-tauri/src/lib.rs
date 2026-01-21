@@ -1348,9 +1348,9 @@ async fn open_instance_folder(app: AppHandle, instance_id: String, folder_type: 
         std::fs::create_dir_all(&path).map_err(|e| e.to_string())?;
     }
 
-    // Use the opener plugin's reveal_item_in_dir to open the folder in the file manager
-    // This is the proper Tauri 2 way to open folders (shell.open only works for URLs in production)
-    app.opener().reveal_item_in_dir(&path).map_err(|e| e.to_string())
+    // Use open_path to directly open the folder in the file manager
+    // reveal_item_in_dir shows the folder in its parent, open_path opens the folder itself
+    app.opener().open_path(path.to_string_lossy(), None::<&str>).map_err(|e| e.to_string())
 }
 
 #[tauri::command]

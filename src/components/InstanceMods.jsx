@@ -210,6 +210,17 @@ function InstanceMods({ instance, onShowConfirm }) {
     }
   };
 
+  const handleOpenConfigFolder = async () => {
+    try {
+      await invoke('open_instance_folder', {
+        instanceId: instance.id,
+        folderType: 'config'
+      });
+    } catch (error) {
+      console.error('Failed to open folder:', error);
+    }
+  };
+
   const confirmDelete = async () => {
     const mod = deleteConfirm.mod;
     setDeleteConfirm({ show: false, mod: null });
@@ -273,9 +284,14 @@ function InstanceMods({ instance, onShowConfirm }) {
         </div>
         <div className="sub-tabs-actions">
           {activeSubTab === 'installed' && (
-            <button className="open-folder-btn" onClick={handleOpenFolder}>
-              📁 Open Mods Folder
-            </button>
+            <>
+              <button className="open-folder-btn" onClick={handleOpenFolder}>
+                📁 Open Mods Folder
+              </button>
+              <button className="open-folder-btn" onClick={handleOpenConfigFolder}>
+                ⚙️ Open Configs Folder
+              </button>
+            </>
           )}
         </div>
       </div>

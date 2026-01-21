@@ -289,6 +289,22 @@ fn select_java_for_launch(instance: &Instance, version_details: &VersionDetails)
     Ok(requested)
 }
 
+/// Extract identity (group:artifact[:classifier]) from maven name for deduplication
+/// We exclude version so that different versions of the same library are deduplicated,
+/// but we include classifier so that native JARs are preserved.
+fn get_lib_identity(name: &str) -> String {
+    let parts: Vec<&str> = name.split(':').collect();
+    if parts.len() >= 4 {
+        // group:artifact:version:classifier -> group:artifact:classifier
+        format!("{}:{}:{}", parts[0], parts[1], parts[3])
+    } else if parts.len() >= 2 {
+        // group:artifact:version -> group:artifact
+        format!("{}:{}", parts[0], parts[1])
+    } else {
+        name.to_string()
+    }
+}
+
 /// Build the classpath for launching Minecraft
 pub fn build_classpath(version_details: &VersionDetails) -> String {
     let libraries_dir = get_libraries_dir();
@@ -651,10 +667,11 @@ pub async fn launch_game(
                         actual_version_details.java_version = details.java_version.clone();
                     }
                     
-                    // Prepended Forge libraries so they take priority, deduplicating by name
+                    // Prepended Forge libraries so they take priority, deduplicating by identity (group:artifact)
                     let mut combined_libs = details.libraries.clone();
                     for lib in &actual_version_details.libraries {
-                        if !combined_libs.iter().any(|l| l.name == lib.name) {
+                        let identity = get_lib_identity(&lib.name);
+                        if !combined_libs.iter().any(|l| get_lib_identity(&l.name) == identity) {
                             combined_libs.push(lib.clone());
                         }
                     }
@@ -705,26 +722,85 @@ pub async fn launch_game(
     // Find Java: instance setting > global setting > auto-detect (with legacy Forge handling)
     let java_path = select_java_for_launch(instance, &actual_version_details)?;
     
-    // Build classpath - add Fabric libraries if using Fabric
-    let mut classpath = build_classpath(&actual_version_details);
+    // Build classpath - handle deduplication to avoid "duplicate ASM classes" error
+    let mut classpath_elements: Vec<(String, String)> = Vec::new();
     
     // Determine main class
     let mut main_class = actual_version_details.main_class.clone();
     
-    // Handle Fabric mod loader (which usually doesn't have its own version.json in standard versions/ dir)
+    // 1. Handle Fabric mod loader additions (takes priority)
     if instance.mod_loader == ModLoader::Fabric {
         if let Some(fabric_info) = fabric::load_fabric_info(instance) {
-            // Add Fabric libraries to classpath
-            let separator = if cfg!(target_os = "windows") { ";" } else { ":" };
-            let fabric_cp = fabric::get_fabric_classpath(&fabric_info);
-            if !fabric_cp.is_empty() {
-                classpath = format!("{}{}{}", fabric_cp.join(separator), separator, classpath);
-            }
-            
-            // Use Fabric's main class
+            classpath_elements.extend(fabric::get_fabric_classpath(&fabric_info));
             main_class = fabric_info.launcher_meta.main_class.get_client_class().to_string();
         }
     }
+    
+    // 2. Add vanilla / Forge merged libraries
+    let libraries_dir = get_libraries_dir();
+    for library in &actual_version_details.libraries {
+        if !versions::should_use_library(library) {
+            continue;
+        }
+        
+        // Add main artifact
+        if let Some(downloads) = &library.downloads {
+            if let Some(artifact) = &downloads.artifact {
+                let lib_path = libraries_dir.join(&artifact.path);
+                if lib_path.exists() {
+                    classpath_elements.push((library.name.clone(), lib_path.to_string_lossy().to_string()));
+                }
+            }
+            
+            // Add native classifiers if they exist for this OS
+            if let Some(natives) = &library.natives {
+                let os_name = versions::get_os_name();
+                if let Some(classifier_key) = natives.get(os_name) {
+                    let arch = if cfg!(target_arch = "x86_64") { "64" } else { "32" };
+                    let actual_key = classifier_key.replace("${arch}", arch);
+                    
+                    if let Some(classifiers) = &downloads.classifiers {
+                        if let Some(native_artifact) = classifiers.get(&actual_key) {
+                            let lib_path = libraries_dir.join(&native_artifact.path);
+                            if lib_path.exists() {
+                                // For natives, we use the original name plus the key for deduplication
+                                let name_with_classifier = format!("{}:{}", library.name, actual_key);
+                                classpath_elements.push((name_with_classifier, lib_path.to_string_lossy().to_string()));
+                            }
+                        }
+                    }
+                }
+            }
+        } else {
+            // Fallback for libraries without explicit download info
+            let lib_path = libraries_dir.join(versions::library_name_to_path(&library.name));
+            if lib_path.exists() {
+                classpath_elements.push((library.name.clone(), lib_path.to_string_lossy().to_string()));
+            }
+        }
+    }
+
+    // 3. Deduplicate elements by maven identity (group:artifact:classifier)
+    // This solves the "duplicate ASM classes found on classpath" error by preferring 
+    // the first version found (which will be Fabric's version if using Fabric)
+    let mut final_paths = Vec::new();
+    let mut seen_identities = std::collections::HashSet::new();
+    
+    for (name, path) in classpath_elements {
+        let identity = get_lib_identity(&name);
+        if !seen_identities.contains(&identity) {
+            seen_identities.insert(identity);
+            final_paths.push(path);
+        }
+    }
+
+    // 4. Add the actual game JAR
+    let versions_dir = get_versions_dir();
+    let client_jar = versions_dir.join(&actual_version_details.id).join(format!("{}.jar", &actual_version_details.id));
+    final_paths.push(client_jar.to_string_lossy().to_string());
+
+    let separator = if cfg!(target_os = "windows") { ";" } else { ":" };
+    let classpath = final_paths.join(separator);
     
     // Build arguments
     let jvm_args = build_jvm_args(&actual_version_details, instance, &classpath);

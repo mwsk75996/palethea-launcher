@@ -7,6 +7,7 @@ use std::fs;
 use std::sync::{Mutex, LazyLock};
 use std::time::{SystemTime, UNIX_EPOCH};
 use tauri::{State, AppHandle, Emitter};
+use tauri_plugin_shell::ShellExt;
 
 // Global state for tracking running game processes
 static RUNNING_PROCESSES: LazyLock<Mutex<HashMap<String, u32>>> = LazyLock::new(|| Mutex::new(HashMap::new()));
@@ -469,7 +470,6 @@ fn kill_game(
 fn get_running_instances() -> Result<Vec<String>, String> {
     let processes = RUNNING_PROCESSES.lock().map_err(|_| "Process state corrupted")?;
     let keys: Vec<String> = processes.keys().cloned().collect();
-    log::info!("Checking running instances: {:?}", keys);
     Ok(keys)
 }
 
@@ -1307,10 +1307,10 @@ fn rename_instance_screenshot(instance_id: String, old_filename: String, new_fil
 }
 
 #[tauri::command]
-fn open_instance_screenshot(instance_id: String, filename: String) -> Result<(), String> {
+fn open_instance_screenshot(app: AppHandle, instance_id: String, filename: String) -> Result<(), String> {
     let instance = instances::get_instance(&instance_id)?;
     let path = files::get_screenshots_dir(&instance).join(filename);
-    files::open_path(&path)
+    app.shell().open(path.to_string_lossy(), None).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -1326,12 +1326,13 @@ fn get_instance_servers(instance_id: String) -> Result<Vec<files::Server>, Strin
 }
 
 #[tauri::command]
-fn open_instance_folder(instance_id: String, folder_type: String) -> Result<(), String> {
+fn open_instance_folder(app: AppHandle, instance_id: String, folder_type: String) -> Result<(), String> {
     let instance = instances::get_instance(&instance_id)?;
     
     let path = match folder_type.as_str() {
         "root" => instance.get_game_directory(),
         "mods" => files::get_mods_dir(&instance),
+        "config" => instance.get_game_directory().join("config"),
         "resourcepacks" => files::get_resourcepacks_dir(&instance),
         "shaderpacks" => files::get_shaderpacks_dir(&instance),
         "saves" => files::get_saves_dir(&instance),
@@ -1340,7 +1341,12 @@ fn open_instance_folder(instance_id: String, folder_type: String) -> Result<(), 
         _ => instance.get_game_directory(),
     };
     
-    files::open_path(&path)
+    // Ensure directory exists before opening
+    if !path.exists() {
+        let _ = std::fs::create_dir_all(&path);
+    }
+    
+    app.shell().open(path.to_string_lossy(), None).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -1400,50 +1406,52 @@ pub fn run() {
                 log::warn!("Failed to initialize instance logos folder: {}", err);
             }
             let _ = fs::create_dir_all(downloader::get_skins_dir());
+
             // Recover any orphaned playtime sessions from crashes or re-register running processes
-            if let Some((instance_id, duration, pid, start_time)) = instances::recover_orphaned_session() {
-                if let Some(p) = pid {
-                    // Re-register
+            if let Some((instance_id, start_time, pid, current_playtime)) = instances::recover_orphaned_session() {
+                let handle = app.handle().clone();
+                let _ = handle.emit("refresh-instances", ());
+
+                if let Some(pid_val) = pid {
+                    // Re-register in the global map
                     {
-                        let mut processes = RUNNING_PROCESSES.lock().unwrap();
-                        processes.insert(instance_id.clone(), p);
+                        let mut processes = RUNNING_PROCESSES.lock().expect("Process state corrupted");
+                        processes.insert(instance_id.clone(), pid_val);
                     }
                     
-                    // Spawn a watcher for the recovered process
+                    let handle_clone = handle.clone();
                     let instance_id_clone = instance_id.clone();
-                    let app_handle_clone = app.handle().clone();
                     
                     std::thread::spawn(move || {
-                        while instances::is_process_running(p) {
+                        // Wait for process to stop
+                        while instances::is_process_running(pid_val) {
                             std::thread::sleep(std::time::Duration::from_secs(5));
                         }
                         
+                        // Finalize playtime
                         let end_time = std::time::SystemTime::now()
                             .duration_since(std::time::UNIX_EPOCH)
                             .unwrap_or_default()
                             .as_secs();
                         let session_duration = end_time.saturating_sub(start_time);
                         
-                        // Update playtime
                         if let Ok(mut inst) = instances::get_instance(&instance_id_clone) {
-                            inst.playtime_seconds += session_duration;
+                            inst.playtime_seconds = current_playtime + session_duration;
                             let _ = instances::update_instance(inst);
                         }
                         
-                        // Clear the session file
                         instances::clear_active_session();
                         
-                        // Remove from running processes
                         if let Ok(mut processes) = RUNNING_PROCESSES.lock() {
                             processes.remove(&instance_id_clone);
                         }
                         
-                        let _ = app_handle_clone.emit("refresh-instances", ());
+                        let _ = handle_clone.emit("refresh-instances", ());
                     });
                     
-                    log::info!("Re-registered running instance {} with PID {}", instance_id, p);
+                    log::info!("Re-registered running instance {} with PID {}", instance_id, pid_val);
                 } else {
-                    log::info!("Recovered orphaned session for instance {}: {}s credited", instance_id, duration);
+                    log::info!("Recovered orphaned session for instance {}: {}s credited", instance_id, current_playtime);
                 }
             }
             Ok(())
@@ -1540,49 +1548,6 @@ pub fn run() {
             log_event,
             exit_app_fully,
         ])
-        .setup(|app| {
-            // Handle orphaned sessions from previous launcher run
-            if let Some((instance_id, start_time, pid, current_playtime)) = instances::recover_orphaned_session() {
-                let handle = app.handle().clone();
-                let _ = handle.emit("refresh-instances", ());
-
-                if let Some(pid_val) = pid {
-                    let mut processes = RUNNING_PROCESSES.lock().expect("Process state corrupted");
-                    processes.insert(instance_id.clone(), pid_val);
-                    
-                    let handle_clone = handle.clone();
-                    let instance_id_clone = instance_id.clone();
-                    
-                    std::thread::spawn(move || {
-                        // Wait for process to stop
-                        while instances::is_process_running(pid_val) {
-                            std::thread::sleep(std::time::Duration::from_secs(5));
-                        }
-                        
-                        // Finalize playtime
-                        let end_time = std::time::SystemTime::now()
-                            .duration_since(std::time::UNIX_EPOCH)
-                            .unwrap_or_default()
-                            .as_secs();
-                        let session_duration = end_time.saturating_sub(start_time);
-                        
-                        if let Ok(mut inst) = instances::get_instance(&instance_id_clone) {
-                            inst.playtime_seconds = current_playtime + session_duration;
-                            let _ = instances::update_instance(inst);
-                        }
-                        
-                        instances::clear_active_session();
-                        
-                        if let Ok(mut processes) = RUNNING_PROCESSES.lock() {
-                            processes.remove(&instance_id_clone);
-                        }
-                        
-                        let _ = handle_clone.emit("refresh-instances", ());
-                    });
-                }
-            }
-            Ok(())
-        })
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                 let processes = RUNNING_PROCESSES.lock().unwrap();

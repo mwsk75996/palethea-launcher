@@ -246,28 +246,28 @@ pub fn load_fabric_info(instance: &Instance) -> Option<FabricLoaderVersion> {
     serde_json::from_str(&content).ok()
 }
 
-/// Get Fabric classpath additions
-pub fn get_fabric_classpath(fabric_info: &FabricLoaderVersion) -> Vec<String> {
+/// Get Fabric classpath additions as (maven_name, absolute_path) pairs
+pub fn get_fabric_classpath(fabric_info: &FabricLoaderVersion) -> Vec<(String, String)> {
     let libraries_dir = get_libraries_dir();
     let mut classpath = Vec::new();
 
     // Add loader
     let loader_path = libraries_dir.join(maven_to_path(&fabric_info.loader.maven));
     if loader_path.exists() {
-        classpath.push(loader_path.to_string_lossy().to_string());
+        classpath.push((fabric_info.loader.maven.clone(), loader_path.to_string_lossy().to_string()));
     }
 
     // Add intermediary
     let intermediary_path = libraries_dir.join(maven_to_path(&fabric_info.intermediary.maven));
     if intermediary_path.exists() {
-        classpath.push(intermediary_path.to_string_lossy().to_string());
+        classpath.push((fabric_info.intermediary.maven.clone(), intermediary_path.to_string_lossy().to_string()));
     }
 
     // Add common libraries
     for lib in &fabric_info.launcher_meta.libraries.common {
         let lib_path = libraries_dir.join(maven_to_path(&lib.name));
         if lib_path.exists() {
-            classpath.push(lib_path.to_string_lossy().to_string());
+            classpath.push((lib.name.clone(), lib_path.to_string_lossy().to_string()));
         }
     }
 
@@ -275,7 +275,7 @@ pub fn get_fabric_classpath(fabric_info: &FabricLoaderVersion) -> Vec<String> {
     for lib in &fabric_info.launcher_meta.libraries.client {
         let lib_path = libraries_dir.join(maven_to_path(&lib.name));
         if lib_path.exists() {
-            classpath.push(lib_path.to_string_lossy().to_string());
+            classpath.push((lib.name.clone(), lib_path.to_string_lossy().to_string()));
         }
     }
 

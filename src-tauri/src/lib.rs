@@ -910,11 +910,9 @@ fn get_disk_usage() -> Result<DiskUsageInfo, String> {
 #[tauri::command]
 fn get_downloaded_versions() -> Result<Vec<DownloadedVersion>, String> {
     let versions_dir = downloader::get_versions_dir();
-    if !versions_dir.exists() {
-        return Ok(Vec::new());
-    }
-    
     let mut versions = Vec::new();
+    
+    // 1. Scan the versions directory (Vanilla versions)
     if let Ok(entries) = fs::read_dir(&versions_dir) {
         for entry in entries.flatten() {
             if entry.path().is_dir() {
@@ -928,11 +926,44 @@ fn get_downloaded_versions() -> Result<Vec<DownloadedVersion>, String> {
             }
         }
     }
+
+    // 2. Scan instances for active mod loaders
+    if let Ok(all_instances) = instances::load_instances() {
+        for inst in all_instances {
+            if inst.mod_loader != instances::ModLoader::Vanilla {
+                if let Some(loader_ver) = inst.mod_loader_version {
+                    let loader_name = match inst.mod_loader {
+                        instances::ModLoader::Fabric => "Fabric",
+                        instances::ModLoader::Forge => "Forge",
+                        instances::ModLoader::NeoForge => "NeoForge",
+                        _ => "ModLoader",
+                    };
+                    
+                    let id = format!("{} {} ({})", loader_name, loader_ver, inst.version_id);
+                    if !versions.iter().any(|v| v.id == id) {
+                        versions.push(DownloadedVersion {
+                            id,
+                            size: 0, // Metadata only, libraries are shared and listed separately
+                        });
+                    }
+                }
+            }
+        }
+    }
+    
+    // Sort by ID to keep it clean
+    versions.sort_by(|a, b| a.id.cmp(&b.id));
+    
     Ok(versions)
 }
 
 #[tauri::command]
 fn delete_version(version_id: String) -> Result<String, String> {
+    // Check if this is a synthesized mod loader version
+    if version_id.contains("Fabric") || version_id.contains("Forge") || version_id.contains("NeoForge") {
+        return Err("Mod loader versions cannot be deleted from here. Modify or delete the instance that uses it instead.".to_string());
+    }
+
     // Check if any instance uses this version
     let all_instances = instances::load_instances()?;
     for inst in &all_instances {
@@ -944,10 +975,10 @@ fn delete_version(version_id: String) -> Result<String, String> {
     let version_dir = downloader::get_versions_dir().join(&version_id);
     if version_dir.exists() {
         fs::remove_dir_all(&version_dir)
-            .map_err(|e| format!("Failed to delete version: {}", e))?;
+            .map_err(|e| format!("Failed to delete version index: {}", e))?;
     }
     
-    Ok(format!("Deleted version {}", version_id))
+    Ok(format!("Deleted version index for {}", version_id))
 }
 
 #[tauri::command]
@@ -1199,15 +1230,20 @@ async fn install_modrinth_file(
     let client = reqwest::Client::new();
     let response = client
         .get(&file_url)
-        .header("User-Agent", "PaletheaLauncher/0.1.0")
+        .header("User-Agent", "PaletheaLauncher/0.1.0 (github.com/PaletheaLauncher)")
         .send()
         .await
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| format!("Request failed: {}", e))?
+        .error_for_status()
+        .map_err(|e| format!("HTTP error: {}", e))?;
     
-    let bytes = response.bytes().await.map_err(|e| e.to_string())?;
+    let bytes = response.bytes().await.map_err(|e| format!("Failed to read response bytes: {}", e))?;
     
-    std::fs::create_dir_all(&dest_dir).map_err(|e| e.to_string())?;
-    std::fs::write(&dest_path, bytes).map_err(|e| e.to_string())?;
+    if let Some(parent) = dest_path.parent() {
+        std::fs::create_dir_all(parent).map_err(|e| format!("Failed to create directory: {}", e))?;
+    }
+    
+    std::fs::write(&dest_path, bytes).map_err(|e| format!("Failed to write file: {}", e))?;
     
     // Save metadata with project_id if provided
     if let Some(pid) = project_id {

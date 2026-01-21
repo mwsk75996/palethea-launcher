@@ -98,6 +98,7 @@ function InstanceWorlds({ instance, onShowNotification }) {
       <WorldDatapacks
         instance={instance}
         world={selectedWorld}
+        onShowNotification={onShowNotification}
         onBack={() => setSelectedWorld(null)}
       />
     );

@@ -3,7 +3,7 @@ import { invoke } from '@tauri-apps/api/core';
 import ConfirmModal from './ConfirmModal';
 import ModVersionModal from './ModVersionModal';
 
-function WorldDatapacks({ instance, world, onBack }) {
+function WorldDatapacks({ instance, world, onShowNotification, onBack }) {
     const [activeSubTab, setActiveSubTab] = useState('installed');
     const [searchQuery, setSearchQuery] = useState('');
     const [searchResults, setSearchResults] = useState([]);
@@ -31,6 +31,9 @@ function WorldDatapacks({ instance, world, onBack }) {
             setInstalledDatapacks(packs);
         } catch (error) {
             console.error('Failed to load datapacks:', error);
+            if (onShowNotification) {
+                onShowNotification('Failed to load datapacks: ' + error, 'error');
+            }
         }
         setLoading(false);
     };
@@ -42,6 +45,7 @@ function WorldDatapacks({ instance, world, onBack }) {
                 query: '',
                 projectType: 'datapack',
                 gameVersion: instance.version_id,
+                loader: 'datapack',
                 limit: 20,
                 offset: 0
             });
@@ -65,6 +69,7 @@ function WorldDatapacks({ instance, world, onBack }) {
                 query: searchQuery,
                 projectType: 'datapack',
                 gameVersion: instance.version_id,
+                loader: 'datapack',
                 limit: 20,
                 offset: 0
             });
@@ -87,7 +92,10 @@ function WorldDatapacks({ instance, world, onBack }) {
     const handleInstall = async (project, version) => {
         setInstalling(project.slug);
         try {
-            const file = version.files.find(f => f.primary) || version.files[0];
+            // Prefer .zip files for datapacks if available, otherwise fallback to primary or first file
+            const file = version.files.find(f => f.filename.toLowerCase().endsWith('.zip')) ||
+                version.files.find(f => f.primary) ||
+                version.files[0];
 
             await invoke('install_modrinth_file', {
                 instanceId: instance.id,
@@ -98,10 +106,16 @@ function WorldDatapacks({ instance, world, onBack }) {
                 worldName: world.folder_name
             });
 
+            if (onShowNotification) {
+                onShowNotification(`Successfully installed ${file.filename}`, 'success');
+            }
+
             await loadInstalledDatapacks();
         } catch (error) {
             console.error('Failed to install datapack:', error);
-            alert('Failed to install datapack: ' + error);
+            if (onShowNotification) {
+                onShowNotification('Failed to install datapack: ' + error, 'error');
+            }
         }
         setInstalling(null);
     };
@@ -269,7 +283,7 @@ function WorldDatapacks({ instance, world, onBack }) {
                 <ModVersionModal
                     project={versionModal.project}
                     gameVersion={instance.version_id}
-                    loader={null}
+                    loader="datapack"
                     onClose={() => setVersionModal({ show: false, project: null })}
                     onSelect={(version) => {
                         setVersionModal({ show: false, project: null });

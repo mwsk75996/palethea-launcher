@@ -28,23 +28,23 @@ function InstanceResources({ instance, onShowNotification }) {
 
   const isItemInstalled = (project) => {
     if (!project?.slug || !project?.title) return false;
-    
+
     const isResourcePack = activeSubTab === 'find-resourcepacks';
     const installedList = isResourcePack ? resourcePacks : shaderPacks;
-    
+
     if (!installedList || installedList.length === 0) return false;
-    
+
     // Normalize: remove all non-alphanumeric characters and lowercase
     const normalizedSlug = project.slug.toLowerCase().replace(/[^a-z0-9]/g, '');
     const normalizedTitle = project.title.toLowerCase().replace(/[^a-z0-9]/g, '');
-    
+
     return installedList.some(item => {
       if (!item?.filename) return false;
       const normalizedFilename = item.filename.toLowerCase().replace(/[^a-z0-9]/g, '');
-      
+
       // Check if slug or title appears in the normalized filename
       return normalizedFilename.includes(normalizedSlug) ||
-             normalizedFilename.includes(normalizedTitle);
+        normalizedFilename.includes(normalizedTitle);
     });
   };
 
@@ -73,7 +73,7 @@ function InstanceResources({ instance, onShowNotification }) {
     setSearchQuery('');
     setError(null);
     try {
-      const results = await invoke('search_modrinth', { 
+      const results = await invoke('search_modrinth', {
         query: '',
         projectType: projectType,
         gameVersion: instance.version_id,
@@ -94,11 +94,11 @@ function InstanceResources({ instance, onShowNotification }) {
       setSearchResults([]);
       return;
     }
-    
+
     const projectType = activeSubTab === 'find-resourcepacks' ? 'resourcepack' : 'shader';
     setSearching(true);
     try {
-      const results = await invoke('search_modrinth', { 
+      const results = await invoke('search_modrinth', {
         query: searchQuery,
         projectType: projectType,
         gameVersion: instance.version_id,
@@ -133,7 +133,7 @@ function InstanceResources({ instance, onShowNotification }) {
 
       const version = versions[0];
       const file = version.files.find(f => f.primary) || version.files[0];
-      
+
       await invoke('install_modrinth_file', {
         instanceId: instance.id,
         fileUrl: file.url,
@@ -159,17 +159,17 @@ function InstanceResources({ instance, onShowNotification }) {
   const confirmDelete = async () => {
     const { item, type } = deleteConfirm;
     setDeleteConfirm({ show: false, item: null, type: null });
-    
+
     try {
       if (type === 'resourcepack') {
-        await invoke('delete_instance_resourcepack', { 
-          instanceId: instance.id, 
-          filename: item.filename 
+        await invoke('delete_instance_resourcepack', {
+          instanceId: instance.id,
+          filename: item.filename
         });
       } else {
-        await invoke('delete_instance_shaderpack', { 
-          instanceId: instance.id, 
-          filename: item.filename 
+        await invoke('delete_instance_shaderpack', {
+          instanceId: instance.id,
+          filename: item.filename
         });
       }
       await loadResources();
@@ -178,9 +178,15 @@ function InstanceResources({ instance, onShowNotification }) {
     }
   };
 
+  const formatDownloads = (num) => {
+    if (num >= 1000000) return (num / 1000000).toFixed(1) + 'M';
+    if (num >= 1000) return (num / 1000).toFixed(1) + 'K';
+    return num.toString();
+  };
+
   const handleOpenResourcePacksFolder = async () => {
     try {
-      await invoke('open_instance_folder', { 
+      await invoke('open_instance_folder', {
         instanceId: instance.id,
         folderType: 'resourcepacks'
       });
@@ -213,25 +219,25 @@ function InstanceResources({ instance, onShowNotification }) {
     <div className="resources-tab">
       <div className="sub-tabs-row">
         <div className="sub-tabs">
-          <button 
+          <button
             className={`sub-tab ${activeSubTab === 'resourcepacks' ? 'active' : ''}`}
             onClick={() => setActiveSubTab('resourcepacks')}
           >
             Resource Packs ({resourcePacks.length})
           </button>
-          <button 
+          <button
             className={`sub-tab ${activeSubTab === 'find-resourcepacks' ? 'active' : ''}`}
             onClick={() => setActiveSubTab('find-resourcepacks')}
           >
             Find Packs
           </button>
-          <button 
+          <button
             className={`sub-tab ${activeSubTab === 'shaders' ? 'active' : ''}`}
             onClick={() => setActiveSubTab('shaders')}
           >
             Shaders ({shaderPacks.length})
           </button>
-          <button 
+          <button
             className={`sub-tab ${activeSubTab === 'find-shaders' ? 'active' : ''}`}
             onClick={() => setActiveSubTab('find-shaders')}
           >
@@ -318,8 +324,8 @@ function InstanceResources({ instance, onShowNotification }) {
               onChange={(e) => setSearchQuery(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
             />
-            <button 
-              className="search-btn" 
+            <button
+              className="search-btn"
               onClick={handleSearch}
               disabled={searching}
             >
@@ -356,7 +362,7 @@ function InstanceResources({ instance, onShowNotification }) {
                     {isItemInstalled(project) ? (
                       <span className="installed-badge">Installed</span>
                     ) : (
-                      <button 
+                      <button
                         className="install-btn"
                         onClick={() => handleInstall(project)}
                         disabled={installing === project.slug}

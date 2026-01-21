@@ -399,10 +399,16 @@ pub fn list_datapacks(instance: &Instance, world_name: &str) -> Vec<Datapack> {
                 .unwrap_or("")
                 .to_string();
             
-            if filename.ends_with(".zip") || path.is_dir() {
+            // Allow .zip, .jar (some hybrid datapacks), and directories
+            if filename.ends_with(".zip") || filename.ends_with(".jar") || path.is_dir() {
+                let name = filename
+                    .trim_end_matches(".zip")
+                    .trim_end_matches(".jar")
+                    .to_string();
+
                 datapacks.push(Datapack {
                     filename: filename.clone(),
-                    name: Some(filename.trim_end_matches(".zip").to_string()),
+                    name: Some(name),
                     enabled: true,
                 });
             }

@@ -43,6 +43,8 @@ pub struct Instance {
     pub logo_filename: Option<String>,
     #[serde(default)]
     pub playtime_seconds: u64,
+    #[serde(default)]
+    pub color_accent: Option<String>,
 }
 
 impl Instance {
@@ -62,9 +64,10 @@ impl Instance {
             resolution_height: None,
             mod_loader: ModLoader::Vanilla,
             mod_loader_version: None,
-            console_auto_update: false,
+            console_auto_update: true,
             logo_filename: None,
             playtime_seconds: 0,
+            color_accent: None,
         }
     }
     
@@ -230,6 +233,7 @@ pub fn clone_instance(instance_id: &str, new_name: String) -> Result<Instance, S
         console_auto_update: source.console_auto_update,
         logo_filename: source.logo_filename.clone(),
         playtime_seconds: 0, // Reset playtime for clone
+        color_accent: source.color_accent.clone(),
     };
     
     // Create new instance directory

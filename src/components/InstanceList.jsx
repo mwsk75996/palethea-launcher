@@ -1,11 +1,33 @@
 import { useEffect, useState, useMemo } from 'react';
-import { Clock } from 'lucide-react';
+import { Clock, Plus, Box } from 'lucide-react';
 import { invoke, convertFileSrc } from '@tauri-apps/api/core';
 import { join } from '@tauri-apps/api/path';
 import './InstanceList.css';
 
 function InstanceList({ instances, onLaunch, onStop, onDelete, onEdit, onCreate, onContextMenu, isLoading, runningInstances = [] }) {
   const [logoMap, setLogoMap] = useState({});
+  const [sortBy, setSortBy] = useState(localStorage.getItem('instance_sort') || 'name');
+
+  const sortedInstances = useMemo(() => {
+    return [...instances].sort((a, b) => {
+      switch (sortBy) {
+        case 'name':
+          return a.name.localeCompare(b.name);
+        case 'color':
+          // Sort by hex value, treating undefined as bottom
+          const colorA = a.color_accent || '#zzzzzz';
+          const colorB = b.color_accent || '#zzzzzz';
+          return colorA.localeCompare(colorB);
+        case 'age':
+          // created_at is timestamp string
+          return parseInt(b.created_at) - parseInt(a.created_at);
+        case 'playtime':
+          return (b.playtime_seconds || 0) - (a.playtime_seconds || 0);
+        default:
+          return 0;
+      }
+    });
+  }, [instances, sortBy]);
 
   // Create a stable key that only changes when logos actually change
   const logoKey = useMemo(() => {
@@ -76,7 +98,25 @@ function InstanceList({ instances, onLaunch, onStop, onDelete, onEdit, onCreate,
   return (
     <div className="instance-list" onContextMenu={handleContainerContextMenu}>
       <div className="instance-header">
-        <h1>Instances</h1>
+        <div className="header-left">
+          <h1>Instances</h1>
+          <div className="sort-controls">
+            <span className="sort-label">Sort by:</span>
+            <select 
+              value={sortBy} 
+              onChange={(e) => {
+                setSortBy(e.target.value);
+                localStorage.setItem('instance_sort', e.target.value);
+              }}
+              className="sort-select"
+            >
+              <option value="name">Name</option>
+              <option value="color">Color</option>
+              <option value="age">Creation Date</option>
+              <option value="playtime">Playtime</option>
+            </select>
+          </div>
+        </div>
         <button className="btn btn-primary" onClick={onCreate} disabled={isLoading}>
           + New Instance
         </button>
@@ -84,18 +124,32 @@ function InstanceList({ instances, onLaunch, onStop, onDelete, onEdit, onCreate,
 
       {instances.length === 0 ? (
         <div className="empty-state">
-          <h2>No instances yet</h2>
-          <p>Create your first Minecraft instance to get started.</p>
-          <button className="btn btn-primary" onClick={onCreate}>
-            Create Instance
-          </button>
+          <div className="empty-state-visual">
+            <Box 
+              className="empty-icon-main" 
+              size={56} 
+              style={{ 
+                color: 'var(--accent)',
+                opacity: 0.8
+              }} 
+            />
+          </div>
+          <div className="empty-state-content">
+            <h2>Your collection is empty</h2>
+            <p>Ready to start a new adventure? Create a custom instance or install a modpack to see it here.</p>
+            <button className="btn btn-primary btn-large btn-with-icon" onClick={onCreate}>
+              <Plus size={18} />
+              Create your first instance
+            </button>
+          </div>
         </div>
       ) : (
         <div className="instances-grid">
-          {instances.map((instance) => (
+          {sortedInstances.map((instance) => (
             <div
               key={instance.id}
               className="instance-card"
+              style={instance.color_accent ? { borderLeft: `4px solid ${instance.color_accent}` } : {}}
               onContextMenu={(e) => {
                 e.preventDefault();
                 e.stopPropagation();

@@ -258,6 +258,25 @@
   border-color: var(--accent);
 }
 
+.setting-row-vertical {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-bottom: 24px;
+}
+
+.setting-row-vertical label {
+  color: var(--text-secondary);
+  font-size: 14px;
+  font-weight: 500;
+}
+
+/* Contain VersionSelector in settings */
+.setting-row-vertical .version-selector-component {
+  height: 380px;
+  max-height: 50vh;
+}
+
 .logo-row {
   align-items: flex-start;
 }
@@ -386,7 +405,7 @@
 .loader-option {
   background: var(--surface);
   border: 2px solid var(--border);
-  color: var(--text-secondary);
+  color: var(--text);
   padding: 10px 20px;
   border-radius: 8px;
   font-size: 14px;
@@ -569,6 +588,7 @@
   margin-bottom: 12px;
   display: -webkit-box;
   -webkit-line-clamp: 2;
+  line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
 }
@@ -915,11 +935,54 @@
   border-color: var(--accent);
 }
 
-.screenshot-image {
+.screenshot-image-wrapper {
+  position: relative;
   width: 100%;
   aspect-ratio: 16/9;
+}
+
+.screenshot-image {
+  width: 100%;
+  height: 100%;
   object-fit: cover;
   cursor: pointer;
+  display: block;
+}
+
+.copy-screenshot-btn {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(4px);
+  color: white;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  width: 32px;
+  height: 32px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  opacity: 0;
+  transition: all 0.2s ease;
+  z-index: 2;
+}
+
+.screenshot-card:hover .copy-screenshot-btn {
+  opacity: 1;
+}
+
+.copy-screenshot-btn:hover {
+  background: var(--accent);
+  border-color: var(--accent);
+  transform: scale(1.1);
+}
+
+.copy-screenshot-btn.copied {
+  opacity: 1;
+  background: #2ecc71;
+  border-color: #2ecc71;
 }
 
 .screenshot-info {
@@ -927,11 +990,69 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 12px;
 }
 
-.screenshot-info span {
+.screenshot-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  flex: 1;
+}
+
+.screenshot-filename {
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.screenshot-date {
   color: var(--text-secondary);
-  font-size: 12px;
+  font-size: 11px;
+}
+
+/* Modal Enhancements */
+.modal-screenshot-image {
+  max-width: 90%;
+  max-height: 80vh;
+  object-fit: contain;
+  border: 3px solid var(--accent);
+  border-radius: 12px;
+  box-shadow: 0 0 40px rgba(0, 0, 0, 0.5), 0 0 20px rgba(232, 156, 136, 0.2);
+}
+
+.modal-screenshot-info {
+  margin-bottom: 24px;
+  text-align: center;
+  animation: fadeInDown 0.3s ease;
+}
+
+.modal-screenshot-info h3 {
+  margin: 0 0 4px;
+  color: #fff;
+  font-size: 20px;
+  font-weight: 600;
+}
+
+.modal-screenshot-info span {
+  color: var(--text-secondary);
+  font-size: 14px;
+}
+
+@keyframes fadeInDown {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 /* Empty State */

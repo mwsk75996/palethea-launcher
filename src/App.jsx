@@ -24,6 +24,7 @@ function App() {
   const [isLoading, setIsLoading] = useState(false);
   const [loadingStatus, setLoadingStatus] = useState('');
   const [loadingProgress, setLoadingProgress] = useState(0);
+  const [loadingBytes, setLoadingBytes] = useState({ current: 0, total: 0 });
   const [notification, setNotification] = useState(null);
   const [editingInstanceId, setEditingInstanceId] = useState(null);
   const [contextMenu, setContextMenu] = useState(null);
@@ -36,7 +37,7 @@ function App() {
   const [currentSkinUrl, setCurrentSkinUrl] = useState(null);
   const [skinCache, setSkinCache] = useState({});
   const [logs, setLogs] = useState([]);
-  const [launcherSettings, setLauncherSettings] = useState({ enable_console: false });
+  const [launcherSettings, setLauncherSettings] = useState({ enable_console: false, show_welcome: true });
   const [showAccountManager, setShowAccountManager] = useState(false);
 
   useEffect(() => {
@@ -245,15 +246,22 @@ function App() {
 
     // Listen for download progress events
     const unlistenProgress = listen('download-progress', (event) => {
-      const { stage, percentage } = event.payload;
+      const { stage, percentage, total_bytes, downloaded_bytes } = event.payload;
+      const displayPercentage = Number(percentage).toFixed(1);
+      
       setLogs(prev => [...prev.slice(-499), {
         id: Date.now() + Math.random(),
         level: 'info',
-        message: `[Download] ${stage} (${percentage}%)`,
+        message: `[Download] ${stage} (${displayPercentage}%)`,
         timestamp: new Date().toISOString()
       }]);
       setLoadingStatus(stage);
       setLoadingProgress(percentage);
+      if (total_bytes !== undefined && downloaded_bytes !== undefined) {
+        setLoadingBytes({ current: downloaded_bytes || 0, total: total_bytes || 0 });
+      } else {
+        setLoadingBytes({ current: 0, total: 0 });
+      }
     });
 
     // Listen for instance refresh events from backend
@@ -270,10 +278,14 @@ function App() {
     };
   }, [loadInstances, loadRunningInstances, isLoading]);
 
+  const [hasCheckedWelcome, setHasCheckedWelcome] = useState(false);
+
   useEffect(() => {
-    const hideWelcome = localStorage.getItem('palethea_welcome_hide') === '1';
-    setShowWelcome(!hideWelcome);
-  }, []);
+    if (!hasCheckedWelcome && launcherSettings && launcherSettings.show_welcome !== undefined) {
+      setShowWelcome(launcherSettings.show_welcome);
+      setHasCheckedWelcome(true);
+    }
+  }, [launcherSettings, hasCheckedWelcome]);
 
   // Close context menu when clicking elsewhere
   useEffect(() => {
@@ -291,7 +303,7 @@ function App() {
     });
   };
 
-  const handleContextMenuAction = async (action) => {
+  const handleContextMenuAction = async (action, data) => {
     const instance = contextMenu?.instance;
     setContextMenu(null);
 
@@ -322,6 +334,17 @@ function App() {
           handleCloneInstance(instance);
         }
         break;
+      case 'setColor':
+        if (instance && data) {
+          try {
+            const updated = { ...instance, color_accent: data };
+            await invoke('update_instance', { instance: updated });
+            await loadInstances();
+          } catch (error) {
+            console.error('Failed to set color:', error);
+          }
+        }
+        break;
     }
   };
 
@@ -349,18 +372,50 @@ function App() {
     setIsLoading(true);
     setLoadingProgress(0);
     try {
-      // Create instance first (so it exists even if download fails)
-      setLoadingStatus('Creating instance...');
-      setLoadingProgress(5);
-      const newInstance = await invoke('create_instance', { name, versionId });
+      if (modLoader === 'modpack') {
+        const { modpackId, versionId: modpackVersionId, modpackName, modpackIcon } = modLoaderVersion;
+        
+        setLoadingStatus(`Creating instance for ${modpackName}...`);
+        setLoadingProgress(5);
+        // We use a placeholder version initially, modpack installer will update it
+        const newInstance = await invoke('create_instance', { name, versionId: 'pending' });
 
-      setLoadingStatus(`Downloading Minecraft ${versionId}...`);
-      await invoke('download_version', { versionId });
+        // Set the modpack icon if available
+        if (modpackIcon) {
+          try {
+            await invoke('set_instance_logo_from_url', { 
+              instanceId: newInstance.id, 
+              logoUrl: modpackIcon 
+            });
+          } catch (iconError) {
+            console.warn('Failed to set modpack icon:', iconError);
+          }
+        }
 
-      setLoadingProgress(80);
+        setLoadingStatus(`Installing modpack ${modpackName}...`);
+        await invoke('install_modpack', { 
+          instanceId: newInstance.id, 
+          versionId: modpackVersionId 
+        });
 
-      // Install mod loader if not vanilla
-      if (modLoader !== 'vanilla') {
+        // Now that modpack is installed, we have the real MC version.
+        // We need to download it.
+        const updatedInstance = await invoke('get_instance_details', { instanceId: newInstance.id });
+        setLoadingStatus(`Downloading Minecraft ${updatedInstance.version_id}...`);
+        await invoke('download_version', { versionId: updatedInstance.version_id });
+      } else {
+        // Create instance first (so it exists even if download fails)
+        setLoadingStatus('Creating instance...');
+        setLoadingProgress(5);
+        const newInstance = await invoke('create_instance', { name, versionId });
+
+        setLoadingStatus(`Downloading Minecraft ${versionId}...`);
+        await invoke('download_version', { versionId });
+
+        setLoadingProgress(80);
+
+        // Install mod loader if not vanilla
+        if (modLoader !== 'vanilla') {
         setLoadingStatus(`Installing ${modLoader}...`);
         setLoadingProgress(90);
 
@@ -426,6 +481,7 @@ function App() {
           }
         }
       }
+    }
 
       setLoadingProgress(100);
       await loadInstances();
@@ -536,9 +592,14 @@ function App() {
     showNotification('Signed out', 'success');
   };
 
-  const handleCloseWelcome = () => {
+  const handleCloseWelcome = async () => {
     if (welcomeDontShow) {
-      localStorage.setItem('palethea_welcome_hide', '1');
+      const updated = {
+        ...launcherSettings,
+        show_welcome: false
+      };
+      await invoke('save_settings', { newSettings: updated });
+      setLauncherSettings(updated);
     }
     setShowWelcome(false);
   };
@@ -713,33 +774,53 @@ function App() {
               <button className="close-btn" onClick={handleCloseWelcome}>×</button>
             </div>
             <div className="welcome-body">
-              <div className="welcome-hero">
-                <div className="welcome-mark">P</div>
-                <div>
-                  <p className="welcome-title">Palethea Launcher</p>
-                  <p className="welcome-subtitle">Create and manage Minecraft instances with mod loaders, profiles, and performance tuning.</p>
+              <p className="welcome-intro">
+                Create and manage Minecraft instances with mod loaders, profiles, and performance tuning.
+              </p>
+
+              <div className="welcome-features-list">
+                <div className="welcome-feature-item">
+                  <span className="feature-dot"></span>
+                  <div className="feature-content">
+                    <strong>Organize Your Library</strong>
+                    <p>Right-click any instance to assign unique color accents or update logos for a personalized collection view.</p>
+                  </div>
+                </div>
+                <div className="welcome-feature-item">
+                  <span className="feature-dot"></span>
+                  <div className="feature-content">
+                    <strong>Playtime Tracking</strong>
+                    <p>Monitor your journey with automated logging that tracks every hour spent across your various instances.</p>
+                  </div>
+                </div>
+                <div className="welcome-feature-item">
+                  <span className="feature-dot"></span>
+                  <div className="feature-content">
+                    <strong>Universal Modding</strong>
+                    <p>Seamlessly install Fabric, Forge, or NeoForge directly when creating new instances—no manual downloads required.</p>
+                  </div>
                 </div>
               </div>
-              <div className="welcome-card">
-                <p>Need help or updates?</p>
-                <button className="btn btn-secondary" onClick={handleOpenSupport}>
-                  Visit palethea.com
-                </button>
-              </div>
+
               <p className="welcome-hint">
                 Tip: You can change whether this welcome screen shows in Settings later.
               </p>
             </div>
             <div className="welcome-footer">
-              <button
-                className={`btn btn-secondary welcome-toggle ${welcomeDontShow ? 'active' : ''}`}
-                onClick={() => setWelcomeDontShow(!welcomeDontShow)}
-              >
-                Don’t show this again
+              <button className="link-btn-text" onClick={handleOpenSupport}>
+                palethea.com
               </button>
-              <button className="btn btn-primary" onClick={handleCloseWelcome}>
-                Get Started
-              </button>
+              <div className="footer-right">
+                <button
+                  className={`btn btn-secondary welcome-toggle ${welcomeDontShow ? 'active' : ''}`}
+                  onClick={() => setWelcomeDontShow(!welcomeDontShow)}
+                >
+                  Don’t show this again
+                </button>
+                <button className="btn btn-primary" onClick={handleCloseWelcome}>
+                  Get Started
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -763,7 +844,12 @@ function App() {
                 style={{ width: `${loadingProgress}%` }}
               />
             </div>
-            <p className="loading-percentage">{loadingProgress}%</p>
+            <p className="loading-percentage">{Number(loadingProgress).toFixed(1)}%</p>
+            {loadingBytes.total > 0 && (
+              <p className="loading-bytes">
+                {(loadingBytes.current / 1024 / 1024).toFixed(1)} MB / {(loadingBytes.total / 1024 / 1024).toFixed(1)} MB
+              </p>
+            )}
           </div>
         </div>
       )}

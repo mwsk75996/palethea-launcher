@@ -1,7 +1,9 @@
 use serde::{Deserialize, Serialize};
 use std::fs::{self, File};
 use std::io::Read;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
+use base64::{Engine as _, engine::general_purpose};
+use flate2::read::GzDecoder;
 
 use crate::minecraft::instances::Instance;
 
@@ -31,11 +33,20 @@ pub struct ShaderPack {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct Datapack {
+    pub filename: String,
+    pub name: Option<String>,
+    pub enabled: bool,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct World {
     pub folder_name: String,
     pub name: String,
-    pub last_played: Option<String>,
-    pub game_mode: Option<String>,
+    pub last_played: Option<i64>,
+    pub game_mode: Option<i32>,
+    pub icon: Option<String>,
+    pub size: u64,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -265,20 +276,98 @@ pub fn list_worlds(instance: &Instance) -> Vec<World> {
                 .unwrap_or("")
                 .to_string();
             
-            // Try to read level.dat for world name (simplified - just use folder name)
             let level_dat = path.join("level.dat");
             if level_dat.exists() {
+                let mut world_name = folder_name.clone();
+                let mut last_played = None;
+                let mut game_mode = None;
+                let mut icon = None;
+                
+                // Try to parse level.dat for actual world name and meta
+                if let Ok(data) = fs::read(&level_dat) {
+                    // level.dat is Gzip-compressed NBT
+                    let mut decoder = GzDecoder::new(&data[..]);
+                    let mut decoded = Vec::new();
+                    if decoder.read_to_end(&mut decoded).is_ok() {
+                        if let Ok(nbt) = fastnbt::from_bytes::<LevelDatNbt>(&decoded) {
+                            if let Some(data_tag) = nbt.data {
+                                if let Some(level_name) = data_tag.level_name {
+                                    world_name = level_name;
+                                }
+                                last_played = data_tag.last_played;
+                                game_mode = data_tag.game_type;
+                            }
+                        }
+                    } else {
+                        // If not gzipped (rare but possible in some formats/backups), try raw
+                        if let Ok(nbt) = fastnbt::from_bytes::<LevelDatNbt>(&data) {
+                            if let Some(data_tag) = nbt.data {
+                                if let Some(level_name) = data_tag.level_name {
+                                    world_name = level_name;
+                                }
+                                last_played = data_tag.last_played;
+                                game_mode = data_tag.game_type;
+                            }
+                        }
+                    }
+                }
+
+                // Check for icon
+                let icon_path = path.join("icon.png");
+                if icon_path.exists() {
+                    if let Ok(icon_data) = fs::read(icon_path) {
+                        icon = Some(general_purpose::STANDARD.encode(icon_data));
+                    }
+                }
+
+                // Calculate size
+                let size = get_dir_size(&path).unwrap_or(0);
+                
                 worlds.push(World {
                     folder_name: folder_name.clone(),
-                    name: folder_name,
-                    last_played: None,
-                    game_mode: None,
+                    name: world_name,
+                    last_played,
+                    game_mode,
+                    icon,
+                    size,
                 });
             }
         }
     }
     
     worlds
+}
+
+#[derive(Debug, Deserialize)]
+struct LevelDatNbt {
+    #[serde(rename = "Data")]
+    data: Option<LevelDataTag>,
+}
+
+#[derive(Debug, Deserialize)]
+struct LevelDataTag {
+    #[serde(rename = "LevelName")]
+    level_name: Option<String>,
+    #[serde(rename = "LastPlayed")]
+    last_played: Option<i64>,
+    #[serde(rename = "GameType")]
+    game_type: Option<i32>,
+}
+
+fn get_dir_size(path: &Path) -> std::io::Result<u64> {
+    let mut size = 0;
+    if path.is_dir() {
+        for entry in fs::read_dir(path)? {
+            let entry = entry?;
+            let path = entry.path();
+            if path.is_dir() {
+                size += get_dir_size(&path)?;
+            } else {
+                size += fs::metadata(path)?.len();
+            }
+        }
+    }
+    Ok(size)
 }
 
 /// Delete a world
@@ -288,6 +377,50 @@ pub fn delete_world(instance: &Instance, folder_name: &str) -> Result<(), String
     
     if path.is_dir() {
         fs::remove_dir_all(&path).map_err(|e| e.to_string())?;
+    }
+    
+    Ok(())
+}
+
+/// List datapacks for a world
+pub fn list_datapacks(instance: &Instance, world_name: &str) -> Vec<Datapack> {
+    let datapacks_dir = get_saves_dir(instance).join(world_name).join("datapacks");
+    let mut datapacks = Vec::new();
+    
+    if !datapacks_dir.exists() {
+        return datapacks;
+    }
+    
+    if let Ok(entries) = fs::read_dir(&datapacks_dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            let filename = path.file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or("")
+                .to_string();
+            
+            if filename.ends_with(".zip") || path.is_dir() {
+                datapacks.push(Datapack {
+                    filename: filename.clone(),
+                    name: Some(filename.trim_end_matches(".zip").to_string()),
+                    enabled: true,
+                });
+            }
+        }
+    }
+    
+    datapacks
+}
+
+/// Delete a datapack from a world
+pub fn delete_datapack(instance: &Instance, world_name: &str, filename: &str) -> Result<(), String> {
+    let datapacks_dir = get_saves_dir(instance).join(world_name).join("datapacks");
+    let path = datapacks_dir.join(filename);
+    
+    if path.is_dir() {
+        fs::remove_dir_all(&path).map_err(|e| e.to_string())?;
+    } else if path.exists() {
+        fs::remove_file(&path).map_err(|e| e.to_string())?;
     }
     
     Ok(())
@@ -311,10 +444,18 @@ pub fn list_screenshots(instance: &Instance) -> Vec<Screenshot> {
                 .to_string();
             
             if filename.ends_with(".png") {
+                let date = fs::metadata(&path)
+                    .ok()
+                    .and_then(|m| m.modified().ok())
+                    .map(|t| {
+                        let datetime: chrono::DateTime<chrono::Local> = t.into();
+                        datetime.to_rfc3339()
+                    });
+
                 screenshots.push(Screenshot {
                     filename: filename.clone(),
                     path: path.to_string_lossy().to_string(),
-                    date: None,
+                    date,
                 });
             }
         }
@@ -400,8 +541,32 @@ struct ServerEntry {
     icon: Option<String>,
 }
 
-/// Open folder in system file manager
-pub fn open_folder(path: &PathBuf) -> Result<(), String> {
+/// Rename a screenshot
+pub fn rename_screenshot(instance: &Instance, old_filename: &str, new_filename: &str) -> Result<(), String> {
+    let dir = get_screenshots_dir(instance);
+    let old_path = dir.join(old_filename);
+    
+    // Ensure new filename has .png
+    let mut new_filename = new_filename.to_string();
+    if !new_filename.ends_with(".png") {
+        new_filename.push_str(".png");
+    }
+    let new_path = dir.join(new_filename);
+    
+    if !old_path.exists() {
+        return Err("Screenshot not found".to_string());
+    }
+    
+    if new_path.exists() {
+        return Err("A screenshot with that name already exists".to_string());
+    }
+    
+    fs::rename(old_path, new_path).map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+/// Open path (file or folder) in system default handler
+pub fn open_path(path: &PathBuf) -> Result<(), String> {
     #[cfg(target_os = "linux")]
     {
         std::process::Command::new("xdg-open")
@@ -412,8 +577,10 @@ pub fn open_folder(path: &PathBuf) -> Result<(), String> {
     
     #[cfg(target_os = "windows")]
     {
-        std::process::Command::new("explorer")
-            .arg(path)
+        // Use powershell to open the file to avoid issues with some file types
+        std::process::Command::new("powershell")
+            .arg("-Command")
+            .arg(format!("Start-Process '{}'", path.to_string_lossy()))
             .spawn()
             .map_err(|e| e.to_string())?;
     }

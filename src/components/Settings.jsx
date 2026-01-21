@@ -14,7 +14,7 @@ function Settings({ username, onSetUsername, isLoggedIn, onLogin, onLogout, laun
   const [diskUsage, setDiskUsage] = useState(null);
   const [downloadedVersions, setDownloadedVersions] = useState([]);
   const [isCleaning, setIsCleaning] = useState(false);
-  const [appVersion, setAppVersion] = useState('0.1.3');
+  const [appVersion, setAppVersion] = useState('0.2.0');
   const [javaDownloadVersion, setJavaDownloadVersion] = useState('21');
   const [javaDownloading, setJavaDownloading] = useState(false);
   const [javaDownloadError, setJavaDownloadError] = useState('');
@@ -491,6 +491,28 @@ function Settings({ username, onSetUsername, isLoggedIn, onLogin, onLogout, laun
               "Simple" uses a sidebar dropdown. "Advanced" uses a dedicated account management modal.
             </p>
           </div>
+
+          <div className="setting-item">
+            <div className="checkbox-row">
+              <label>Show Welcome Screen</label>
+              <input
+                type="checkbox"
+                className="ios-switch"
+                checked={launcherSettings?.show_welcome !== false}
+                onChange={async (e) => {
+                  const updated = {
+                    ...launcherSettings,
+                    show_welcome: e.target.checked
+                  };
+                  await invoke('save_settings', { newSettings: updated });
+                  onSettingsUpdated();
+                }}
+              />
+            </div>
+            <p className="setting-hint">
+              Show the welcome screen overlay on startup.
+            </p>
+          </div>
         </section>
 
         <section className="settings-section">
@@ -499,7 +521,7 @@ function Settings({ username, onSetUsername, isLoggedIn, onLogin, onLogout, laun
             <h3>Palethea Launcher</h3>
             <p className="version">Version {appVersion}</p>
             <p className="description">
-              A custom Minecraft launcher built with Tauri and React.
+              A high-performance Minecraft launcher designed for speed, customizability, and a modern adventure. Manage your instances, installations, and modpacks with ease.
             </p>
           </div>
         </section>

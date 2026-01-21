@@ -53,6 +53,7 @@ function InstanceEditor({ instanceId, onClose, onUpdate, onLaunch }) {
   const handleLaunch = async () => {
     if (onLaunch && instance) {
       setLaunching(true);
+      setActiveTab('console');
       await onLaunch(instance.id);
       setLaunching(false);
     }
@@ -118,8 +119,8 @@ function InstanceEditor({ instanceId, onClose, onUpdate, onLaunch }) {
             <span className="loader-badge">{instance.mod_loader}</span>
           )}
         </div>
-        <button 
-          className="launch-btn-large" 
+        <button
+          className="launch-btn-large"
           onClick={handleLaunch}
           disabled={launching}
         >

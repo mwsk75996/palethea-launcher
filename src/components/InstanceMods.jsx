@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import ConfirmModal from './ConfirmModal';
+import ModVersionModal from './ModVersionModal';
 
 function InstanceMods({ instance, onShowConfirm }) {
   const [activeSubTab, setActiveSubTab] = useState('installed');
@@ -13,6 +14,7 @@ function InstanceMods({ instance, onShowConfirm }) {
   const [loading, setLoading] = useState(true);
   const [loadingPopular, setLoadingPopular] = useState(true);
   const [deleteConfirm, setDeleteConfirm] = useState({ show: false, mod: null });
+  const [versionModal, setVersionModal] = useState({ show: false, project: null });
 
   useEffect(() => {
     loadInstalledMods();
@@ -22,20 +24,20 @@ function InstanceMods({ instance, onShowConfirm }) {
   // Check if a mod is installed by comparing project_id or filenames
   const isModInstalled = (project) => {
     const projectId = project.project_id || project.slug;
-    
+
     // First check by project_id (most reliable)
     if (installedMods.some(m => m.project_id === projectId)) {
       return true;
     }
-    
+
     // Fallback to filename matching for mods installed before metadata was added
     const normalizedSlug = project.slug.toLowerCase().replace(/[^a-z0-9]/g, '');
     const normalizedTitle = project.title.toLowerCase().replace(/[^a-z0-9]/g, '');
-    
+
     return installedMods.some(m => {
       const normalizedFilename = m.filename.toLowerCase().replace(/[^a-z0-9]/g, '');
       return normalizedFilename.includes(normalizedSlug) ||
-             normalizedFilename.includes(normalizedTitle);
+        normalizedFilename.includes(normalizedTitle);
     });
   };
 
@@ -52,7 +54,7 @@ function InstanceMods({ instance, onShowConfirm }) {
   const loadPopularMods = async () => {
     setLoadingPopular(true);
     try {
-      const results = await invoke('search_modrinth', { 
+      const results = await invoke('search_modrinth', {
         query: '',
         projectType: 'mod',
         gameVersion: instance.version_id,
@@ -72,10 +74,10 @@ function InstanceMods({ instance, onShowConfirm }) {
       setSearchResults([]);
       return;
     }
-    
+
     setSearching(true);
     try {
-      const results = await invoke('search_modrinth', { 
+      const results = await invoke('search_modrinth', {
         query: searchQuery,
         projectType: 'mod',
         gameVersion: instance.version_id,
@@ -90,27 +92,35 @@ function InstanceMods({ instance, onShowConfirm }) {
     setSearching(false);
   };
 
-  const handleInstall = async (project, skipDependencyCheck = false) => {
+  const handleRequestInstall = async (project) => {
+    setVersionModal({ show: true, project });
+  };
+
+  const handleInstall = async (project, selectedVersion = null, skipDependencyCheck = false) => {
     setInstalling(project.slug);
     try {
-      const versions = await invoke('get_modrinth_versions', {
-        projectId: project.slug,
-        gameVersion: instance.version_id,
-        loader: instance.mod_loader?.toLowerCase() || null
-      });
+      let version = selectedVersion;
 
-      if (versions.length === 0) {
-        alert('No compatible version found for this mod');
-        setInstalling(null);
-        return;
+      if (!version) {
+        const versions = await invoke('get_modrinth_versions', {
+          projectId: project.slug,
+          gameVersion: instance.version_id,
+          loader: instance.mod_loader?.toLowerCase() || null
+        });
+
+        if (versions.length === 0) {
+          alert('No compatible version found for this mod');
+          setInstalling(null);
+          return;
+        }
+
+        version = versions[0];
       }
 
-      const version = versions[0];
-      
       // Check for required dependencies
       if (!skipDependencyCheck && version.dependencies && version.dependencies.length > 0) {
         const requiredDeps = version.dependencies.filter(d => d.dependency_type === 'required');
-        
+
         if (requiredDeps.length > 0) {
           // Fetch dependency info
           const depProjects = [];
@@ -127,7 +137,7 @@ function InstanceMods({ instance, onShowConfirm }) {
               }
             }
           }
-          
+
           if (depProjects.length > 0) {
             // Show confirmation modal for dependencies
             setInstalling(null);
@@ -138,16 +148,16 @@ function InstanceMods({ instance, onShowConfirm }) {
               cancelText: 'Skip Dependencies',
               variant: 'primary',
               onConfirm: async () => {
-                // Install all dependencies first
+                // Install all dependencies (using their latest version for simplicity, or we could recurse version selection)
                 for (const depProject of depProjects) {
-                  await handleInstall(depProject, true);
+                  await handleInstall(depProject, null, true);
                 }
-                // Then install the original mod
-                await handleInstall(project, true);
+                // Then install the original mod with the selected version
+                await handleInstall(project, version, true);
               },
               onCancel: async () => {
                 // Install without dependencies
-                await handleInstall(project, true);
+                await handleInstall(project, version, true);
               }
             });
             return;
@@ -156,7 +166,7 @@ function InstanceMods({ instance, onShowConfirm }) {
       }
 
       const file = version.files.find(f => f.primary) || version.files[0];
-      
+
       await invoke('install_modrinth_file', {
         instanceId: instance.id,
         fileUrl: file.url,
@@ -175,9 +185,9 @@ function InstanceMods({ instance, onShowConfirm }) {
 
   const handleToggle = async (mod) => {
     try {
-      await invoke('toggle_instance_mod', { 
-        instanceId: instance.id, 
-        filename: mod.filename 
+      await invoke('toggle_instance_mod', {
+        instanceId: instance.id,
+        filename: mod.filename
       });
       await loadInstalledMods();
     } catch (error) {
@@ -191,7 +201,7 @@ function InstanceMods({ instance, onShowConfirm }) {
 
   const handleOpenFolder = async () => {
     try {
-      await invoke('open_instance_folder', { 
+      await invoke('open_instance_folder', {
         instanceId: instance.id,
         folderType: 'mods'
       });
@@ -203,11 +213,11 @@ function InstanceMods({ instance, onShowConfirm }) {
   const confirmDelete = async () => {
     const mod = deleteConfirm.mod;
     setDeleteConfirm({ show: false, mod: null });
-    
+
     try {
-      await invoke('delete_instance_mod', { 
-        instanceId: instance.id, 
-        filename: mod.filename 
+      await invoke('delete_instance_mod', {
+        instanceId: instance.id,
+        filename: mod.filename
       });
       await loadInstalledMods();
     } catch (error) {
@@ -248,13 +258,13 @@ function InstanceMods({ instance, onShowConfirm }) {
     <div className="mods-tab">
       <div className="sub-tabs-row">
         <div className="sub-tabs">
-          <button 
+          <button
             className={`sub-tab ${activeSubTab === 'installed' ? 'active' : ''}`}
             onClick={() => setActiveSubTab('installed')}
           >
             Installed ({installedMods.length})
           </button>
-          <button 
+          <button
             className={`sub-tab ${activeSubTab === 'find' ? 'active' : ''}`}
             onClick={() => setActiveSubTab('find')}
           >
@@ -282,7 +292,7 @@ function InstanceMods({ instance, onShowConfirm }) {
             <div className="installed-list">
               {installedMods.map((mod) => (
                 <div key={mod.filename} className={`installed-item ${!mod.enabled ? 'disabled' : ''}`}>
-                  <div 
+                  <div
                     className={`item-toggle ${mod.enabled ? 'enabled' : ''}`}
                     onClick={() => handleToggle(mod)}
                   />
@@ -310,8 +320,8 @@ function InstanceMods({ instance, onShowConfirm }) {
               onChange={(e) => setSearchQuery(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
             />
-            <button 
-              className="search-btn" 
+            <button
+              className="search-btn"
               onClick={handleSearch}
               disabled={searching}
             >
@@ -357,9 +367,9 @@ function InstanceMods({ instance, onShowConfirm }) {
                     {isModInstalled(project) ? (
                       <span className="installed-badge">Installed</span>
                     ) : (
-                      <button 
+                      <button
                         className="install-btn"
-                        onClick={() => handleInstall(project)}
+                        onClick={() => handleRequestInstall(project)}
                         disabled={installing === project.slug}
                       >
                         {installing === project.slug ? 'Installing...' : 'Install'}
@@ -383,6 +393,19 @@ function InstanceMods({ instance, onShowConfirm }) {
         onConfirm={confirmDelete}
         onCancel={() => setDeleteConfirm({ show: false, mod: null })}
       />
+
+      {versionModal.show && (
+        <ModVersionModal
+          project={versionModal.project}
+          gameVersion={instance.version_id}
+          loader={instance.mod_loader}
+          onClose={() => setVersionModal({ show: false, project: null })}
+          onSelect={(version) => {
+            setVersionModal({ show: false, project: null });
+            handleInstall(versionModal.project, version);
+          }}
+        />
+      )}
     </div>
   );
 }

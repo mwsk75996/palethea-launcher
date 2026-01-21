@@ -2,13 +2,16 @@
   padding: 32px;
   height: 100%;
   overflow-y: auto;
+  overflow-x: hidden;
 }
 
 .instance-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 32px;
+  margin-bottom: 64px;
+  position: relative;
+  z-index: 5;
 }
 
 .instance-header h1 {
@@ -18,6 +21,39 @@
   margin: 0;
 }
 
+.header-left {
+  display: flex;
+  align-items: baseline;
+  gap: 24px;
+}
+
+.sort-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.sort-label {
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.sort-select {
+  background: var(--surface-hover);
+  border: 1px solid var(--border);
+  color: var(--foreground);
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 13px;
+  cursor: pointer;
+  outline: none;
+  transition: all 0.1s ease;
+}
+
+.sort-select:hover {
+  border-color: var(--muted);
+}
+
 .empty-state {
   display: flex;
   flex-direction: column;
@@ -25,25 +61,70 @@
   justify-content: center;
   height: 60%;
   text-align: center;
+  animation: fadeIn 0.5s ease-out;
+  overflow: visible;
+  position: relative;
+  z-index: 1;
 }
 
-.empty-icon {
-  font-size: 48px;
-  margin-bottom: 16px;
-  opacity: 0.5;
+.empty-state-visual {
+  position: relative;
+  width: 100px;
+  height: 100px;
+  margin-bottom: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: visible;
+  z-index: 10;
 }
 
-.empty-state h2 {
-  font-size: 18px;
-  font-weight: 500;
+.empty-icon-main {
+  position: relative;
+  z-index: 1 !important;
+  color: var(--accent);
+  opacity: 0.8;
+  animation: floatBox 3s infinite ease-in-out;
+}
+
+.empty-state-content h2 {
+  font-size: 24px;
+  font-weight: 600;
   color: var(--foreground);
-  margin: 0 0 8px 0;
+  margin: 0 0 12px 0;
+  letter-spacing: -0.01em;
 }
 
-.empty-state p {
+.empty-state-content p {
   color: var(--muted);
-  margin: 0 0 24px 0;
-  font-size: 14px;
+  margin: 0 0 16px 0;
+  font-size: 15px;
+  max-width: 400px;
+  line-height: 1.5;
+}
+
+.btn-large {
+  margin-top: 32px;
+  padding: 12px 28px;
+  font-size: 15px;
+  font-weight: 600;
+  border-radius: 10px;
+}
+
+.btn-with-icon {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+@keyframes floatBox {
+  0%, 100% { transform: translateY(0) rotate(0); }
+  50% { transform: translateY(-10px) rotate(2deg); }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
 .instances-grid {

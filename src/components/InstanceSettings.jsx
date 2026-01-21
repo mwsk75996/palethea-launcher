@@ -2,10 +2,12 @@ import { useState, useEffect } from 'react';
 import { invoke, convertFileSrc } from '@tauri-apps/api/core';
 import { open } from '@tauri-apps/plugin-dialog';
 import { join } from '@tauri-apps/api/path';
+import VersionSelector from './VersionSelector';
 
 function InstanceSettings({ instance, onSave, onInstanceUpdated }) {
   const [name, setName] = useState(instance.name);
   const [versionId, setVersionId] = useState(instance.version_id);
+  const [colorAccent, setColorAccent] = useState(instance.color_accent || '#ffffff');
   const [modLoader, setModLoader] = useState(instance.mod_loader || 'Vanilla');
   const [modLoaderVersion, setModLoaderVersion] = useState(instance.mod_loader_version || '');
   const [javaPath, setJavaPath] = useState(instance.java_path || '');
@@ -37,7 +39,7 @@ function InstanceSettings({ instance, onSave, onInstanceUpdated }) {
 
   useEffect(() => {
     checkChanges();
-  }, [name, versionId, modLoader, modLoaderVersion, javaPath, memory, jvmArgs]);
+  }, [name, versionId, colorAccent, modLoader, modLoaderVersion, javaPath, memory, jvmArgs]);
 
   useEffect(() => {
     let cancelled = false;
@@ -93,6 +95,7 @@ function InstanceSettings({ instance, onSave, onInstanceUpdated }) {
     const changed =
       name !== instance.name ||
       versionId !== instance.version_id ||
+      colorAccent !== (instance.color_accent || '#ffffff') ||
       modLoader !== (instance.mod_loader || 'Vanilla') ||
       modLoaderVersion !== (instance.mod_loader_version || '') ||
       javaPath !== (instance.java_path || '') ||
@@ -124,6 +127,7 @@ function InstanceSettings({ instance, onSave, onInstanceUpdated }) {
         ...instance,
         name,
         version_id: versionId,
+        color_accent: colorAccent || null,
         mod_loader: modLoader,
         mod_loader_version: modLoaderVersion || null,
         java_path: javaPath || null,
@@ -217,17 +221,14 @@ function InstanceSettings({ instance, onSave, onInstanceUpdated }) {
             onChange={(e) => setName(e.target.value)}
           />
         </div>
-        <div className="setting-row">
+        <div className="setting-row-vertical">
           <label>Game Version</label>
-          <select value={versionId} onChange={(e) => setVersionId(e.target.value)}>
-            {versions.length === 0 ? (
-              <option value={versionId}>{versionId}</option>
-            ) : (
-              versions.map((v) => (
-                <option key={v.id} value={v.id}>{v.id}</option>
-              ))
-            )}
-          </select>
+          <VersionSelector
+            versions={versions}
+            selectedVersion={versionId}
+            onSelect={setVersionId}
+            onRefresh={loadVersions}
+          />
         </div>
         <div className="setting-row logo-row">
           <label>Instance Logo</label>
@@ -264,25 +265,15 @@ function InstanceSettings({ instance, onSave, onInstanceUpdated }) {
           </div>
           {modLoader !== 'Vanilla' && (
             <div className="loader-version-select">
-              <div className="setting-row">
+              <div className="setting-row-vertical">
                 <label>{modLoader} Version</label>
-                <select
-                  value={modLoaderVersion}
-                  onChange={(e) => setModLoaderVersion(e.target.value)}
-                  disabled={loadingLoaders}
-                >
-                  {loadingLoaders ? (
-                    <option value={modLoaderVersion}>{modLoaderVersion || 'Loading...'}</option>
-                  ) : loaderVersions.length > 0 ? (
-                    loaderVersions.map((v) => (
-                      <option key={v} value={v}>{v}</option>
-                    ))
-                  ) : modLoaderVersion ? (
-                    <option value={modLoaderVersion}>{modLoaderVersion}</option>
-                  ) : (
-                    <option>No versions available</option>
-                  )}
-                </select>
+                <VersionSelector
+                  versions={loaderVersions}
+                  selectedVersion={modLoaderVersion}
+                  onSelect={setModLoaderVersion}
+                  loading={loadingLoaders}
+                  showFilters={false}
+                />
               </div>
             </div>
           )}

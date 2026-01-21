@@ -21,7 +21,9 @@ pub struct DownloadProgress {
     pub stage: String,
     pub current: u32,
     pub total: u32,
-    pub percentage: u32,
+    pub percentage: f32,
+    pub total_bytes: Option<u64>,
+    pub downloaded_bytes: Option<u64>,
 }
 
 /// Get the Minecraft data directory
@@ -187,9 +189,11 @@ pub async fn download_libraries(version_details: &VersionDetails, app_handle: Op
         url: String,
         path: PathBuf,
         sha1: String,
+        size: u64,
     }
     
     let mut downloads: Vec<LibDownload> = Vec::new();
+    let mut total_bytes = 0u64;
     
     for library in &version_details.libraries {
         if !should_use_library(library) {
@@ -198,10 +202,13 @@ pub async fn download_libraries(version_details: &VersionDetails, app_handle: Op
         
         if let Some(lib_downloads) = &library.downloads {
             if let Some(artifact) = &lib_downloads.artifact {
+                let size = artifact.size as u64;
+                total_bytes += size;
                 downloads.push(LibDownload {
                     url: artifact.url.clone(),
                     path: libraries_dir.join(&artifact.path),
                     sha1: artifact.sha1.clone(),
+                    size,
                 });
             }
             
@@ -214,10 +221,13 @@ pub async fn download_libraries(version_details: &VersionDetails, app_handle: Op
                         let classifier_key = classifier_key.replace("${arch}", arch);
                         
                         if let Some(native_artifact) = classifiers.get(&classifier_key) {
+                            let size = native_artifact.size as u64;
+                            total_bytes += size;
                             downloads.push(LibDownload {
                                 url: native_artifact.url.clone(),
                                 path: libraries_dir.join(&native_artifact.path),
                                 sha1: native_artifact.sha1.clone(),
+                                size,
                             });
                         }
                     }
@@ -236,6 +246,7 @@ pub async fn download_libraries(version_details: &VersionDetails, app_handle: Op
                 url,
                 path: libraries_dir.join(&path_str),
                 sha1: String::new(), // No SHA1 for legacy libraries easily available
+                size: 0,
             });
         } else {
             // Default to Mojang libraries for any library without download info or custom URL
@@ -246,12 +257,14 @@ pub async fn download_libraries(version_details: &VersionDetails, app_handle: Op
                 url,
                 path: libraries_dir.join(&path_str),
                 sha1: String::new(),
+                size: 0,
             });
         }
     }
     
     let total = downloads.len() as u32;
     let completed = Arc::new(AtomicU32::new(0));
+    let downloaded_bytes = Arc::new(std::sync::atomic::AtomicU64::new(0));
     
     // Emit initial progress
     if let Some(handle) = app_handle {
@@ -259,7 +272,9 @@ pub async fn download_libraries(version_details: &VersionDetails, app_handle: Op
             stage: format!("Downloading libraries (0/{})", total),
             current: 0,
             total,
-            percentage: 10,
+            percentage: 10.0,
+            total_bytes: Some(total_bytes),
+            downloaded_bytes: Some(0),
         });
     }
     
@@ -267,22 +282,27 @@ pub async fn download_libraries(version_details: &VersionDetails, app_handle: Op
     let results: Vec<Result<PathBuf, Box<dyn Error + Send + Sync>>> = stream::iter(downloads)
         .map(|dl| {
             let completed = Arc::clone(&completed);
+            let downloaded_bytes = Arc::clone(&downloaded_bytes);
             let app_handle = app_handle.cloned();
             let total = total;
+            let total_bytes_val = total_bytes;
             async move {
                 download_file(&dl.url, &dl.path, Some(&dl.sha1)).await?;
                 
                 let done = completed.fetch_add(1, Ordering::SeqCst) + 1;
+                let current_bytes = downloaded_bytes.fetch_add(dl.size, Ordering::SeqCst) + dl.size;
                 
                 // Emit progress every 5 downloads
                 if done % 5 == 0 || done == total {
                     if let Some(handle) = &app_handle {
-                        let percentage = 10 + ((done * 25) / total);
+                        let percentage = 10.0 + ((done as f32 * 25.0) / total as f32);
                         let _ = handle.emit("download-progress", DownloadProgress {
                             stage: format!("Downloading libraries ({}/{})", done, total),
                             current: done,
                             total,
                             percentage,
+                            total_bytes: Some(total_bytes_val),
+                            downloaded_bytes: Some(current_bytes),
                         });
                     }
                 }
@@ -329,21 +349,26 @@ pub async fn download_assets(version_details: &VersionDetails, app_handle: Optio
         url: String,
         path: PathBuf,
         hash: String,
+        size: u64,
     }
     
     let mut downloads: Vec<AssetDownload> = Vec::new();
+    let mut total_bytes = 0u64;
     
     if let Some(objects) = index_json.get("objects").and_then(|o| o.as_object()) {
         for (_name, info) in objects {
             if let Some(hash) = info.get("hash").and_then(|h| h.as_str()) {
+                let size = info.get("size").and_then(|s| s.as_u64()).unwrap_or(0);
                 let prefix = &hash[..2];
                 let object_path = objects_dir.join(prefix).join(hash);
                 let url = format!("https://resources.download.minecraft.net/{}/{}", prefix, hash);
                 
+                total_bytes += size;
                 downloads.push(AssetDownload {
                     url,
                     path: object_path,
                     hash: hash.to_string(),
+                    size,
                 });
             }
         }
@@ -351,6 +376,7 @@ pub async fn download_assets(version_details: &VersionDetails, app_handle: Optio
     
     let total = downloads.len() as u32;
     let completed = Arc::new(AtomicU32::new(0));
+    let downloaded_bytes = Arc::new(std::sync::atomic::AtomicU64::new(0));
     
     // Emit initial progress
     if let Some(handle) = app_handle {
@@ -358,7 +384,9 @@ pub async fn download_assets(version_details: &VersionDetails, app_handle: Optio
             stage: format!("Downloading assets (0/{})", total),
             current: 0,
             total,
-            percentage: 35,
+            percentage: 35.0,
+            total_bytes: Some(total_bytes),
+            downloaded_bytes: Some(0),
         });
     }
     
@@ -366,22 +394,27 @@ pub async fn download_assets(version_details: &VersionDetails, app_handle: Optio
     let results: Vec<Result<(), Box<dyn Error + Send + Sync>>> = stream::iter(downloads)
         .map(|dl| {
             let completed = Arc::clone(&completed);
+            let downloaded_bytes = Arc::clone(&downloaded_bytes);
             let app_handle = app_handle.cloned();
             let total = total;
+            let total_bytes_val = total_bytes;
             async move {
                 download_file(&dl.url, &dl.path, Some(&dl.hash)).await?;
                 
                 let done = completed.fetch_add(1, Ordering::SeqCst) + 1;
+                let current_bytes = downloaded_bytes.fetch_add(dl.size, Ordering::SeqCst) + dl.size;
                 
                 // Emit progress every 100 assets to avoid spam
                 if done % 100 == 0 || done == total {
                     if let Some(handle) = &app_handle {
-                        let percentage = 35 + ((done * 65) / total);
+                        let percentage = 35.0 + ((done as f32 * 65.0) / total as f32);
                         let _ = handle.emit("download-progress", DownloadProgress {
                             stage: format!("Downloading assets ({}/{})", done, total),
                             current: done,
                             total,
                             percentage,
+                            total_bytes: Some(total_bytes_val),
+                            downloaded_bytes: Some(current_bytes),
                         });
                     }
                 }
@@ -410,7 +443,9 @@ pub async fn download_version(version_id: &str, app_handle: Option<&AppHandle>) 
             stage: "Fetching version info...".to_string(),
             current: 0,
             total: 100,
-            percentage: 0,
+            percentage: 0.0,
+            total_bytes: None,
+            downloaded_bytes: None,
         });
     }
     
@@ -429,11 +464,14 @@ pub async fn download_version(version_id: &str, app_handle: Option<&AppHandle>) 
     // Download client (5%)
     if let Some(handle) = app_handle {
         log_info!(handle, "Downloading client JAR...");
+        let size = version_details.downloads.as_ref().map(|d| d.client.size).unwrap_or(0) as u64;
         let _ = handle.emit("download-progress", DownloadProgress {
             stage: "Downloading client JAR...".to_string(),
             current: 5,
             total: 100,
-            percentage: 5,
+            percentage: 5.0,
+            total_bytes: Some(size),
+            downloaded_bytes: Some(0),
         });
     }
     download_client(&version_details).await?;
@@ -445,7 +483,9 @@ pub async fn download_version(version_id: &str, app_handle: Option<&AppHandle>) 
             stage: "Downloading libraries...".to_string(),
             current: 10,
             total: 100,
-            percentage: 10,
+            percentage: 10.0,
+            total_bytes: None,
+            downloaded_bytes: None,
         });
     }
     download_libraries(&version_details, app_handle).await?;
@@ -457,7 +497,9 @@ pub async fn download_version(version_id: &str, app_handle: Option<&AppHandle>) 
             stage: "Downloading assets...".to_string(),
             current: 35,
             total: 100,
-            percentage: 35,
+            percentage: 35.0,
+            total_bytes: None,
+            downloaded_bytes: None,
         });
     }
     download_assets(&version_details, app_handle).await?;
@@ -469,7 +511,9 @@ pub async fn download_version(version_id: &str, app_handle: Option<&AppHandle>) 
             stage: "Complete!".to_string(),
             current: 100,
             total: 100,
-            percentage: 100,
+            percentage: 100.0,
+            total_bytes: None,
+            downloaded_bytes: None,
         });
     }
     

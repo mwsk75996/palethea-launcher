@@ -39,6 +39,13 @@ pub struct VersionListItem {
     pub release_time: String,
 }
 
+#[derive(Debug, Serialize, Deserialize)]
+pub struct LoaderVersion {
+    pub version: String,
+    pub release_time: Option<String>,
+    pub version_type: String, // "release", "beta", "recommended", "latest"
+}
+
 #[tauri::command]
 fn log_event(level: String, message: String, app_handle: AppHandle) {
     logger::emit_log(&app_handle, &level, &message);
@@ -136,6 +143,51 @@ fn set_instance_logo(instance_id: String, source_path: String) -> Result<instanc
 
     fs::copy(&source, &destination)
         .map_err(|e| format!("Failed to copy logo: {}", e))?;
+
+    if let Some(old_logo) = &instance.logo_filename {
+        let old_path = downloader::get_instance_logos_dir().join(old_logo);
+        let _ = fs::remove_file(old_path);
+    }
+
+    instance.logo_filename = Some(filename);
+    instances::update_instance(instance.clone())?;
+    Ok(instance)
+}
+
+#[tauri::command]
+async fn set_instance_logo_from_url(instance_id: String, logo_url: String, app_handle: AppHandle) -> Result<instances::Instance, String> {
+    logger::emit_log(&app_handle, "info", &format!("Setting instance logo from URL: {}", logo_url));
+    let mut instance = instances::get_instance(&instance_id)?;
+    downloader::ensure_instance_logos_dir()?;
+
+    let client = reqwest::Client::new();
+    let response = client.get(&logo_url)
+        .header("User-Agent", "PaletheaLauncher/0.1.0")
+        .send()
+        .await
+        .map_err(|e| format!("Failed to download logo: {}", e))?;
+
+    let bytes = response.bytes().await.map_err(|e| format!("Failed to get logo bytes: {}", e))?;
+
+    let timestamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
+    
+    // Better extension detection
+    let url_no_query = logo_url.split('?').next().unwrap_or(&logo_url);
+    let ext = url_no_query.split('.').last().unwrap_or("png").to_lowercase();
+    let safe_ext = if ext == "jpg" || ext == "jpeg" || ext == "png" || ext == "webp" {
+        ext
+    } else {
+        "png".to_string()
+    };
+
+    let filename = format!("{}_{}.{}", instance_id, timestamp, safe_ext);
+    let destination = downloader::get_instance_logos_dir().join(&filename);
+
+    fs::write(&destination, &bytes)
+        .map_err(|e| format!("Failed to save logo: {}", e))?;
 
     if let Some(old_logo) = &instance.logo_filename {
         let old_path = downloader::get_instance_logos_dir().join(old_logo);
@@ -863,7 +915,7 @@ fn clear_assets_cache() -> Result<String, String> {
 // ============== MOD LOADER COMMANDS ==============
 
 #[tauri::command]
-async fn get_loader_versions(loader: String, game_version: String) -> Result<Vec<String>, String> {
+async fn get_loader_versions(loader: String, game_version: String) -> Result<Vec<LoaderVersion>, String> {
     match loader.as_str() {
         "fabric" => {
             // Fetch Fabric loader versions from the Fabric API
@@ -874,7 +926,7 @@ async fn get_loader_versions(loader: String, game_version: String) -> Result<Vec
             );
             let response = client
                 .get(&url)
-                .header("User-Agent", "PaletheaLauncher/0.1.0")
+                .header("User-Agent", "PaletheaLauncher/0.1.3")
                 .send()
                 .await
                 .map_err(|e| e.to_string())?;
@@ -891,6 +943,7 @@ async fn get_loader_versions(loader: String, game_version: String) -> Result<Vec
             #[derive(Deserialize)]
             struct FabricLoader {
                 version: String,
+                stable: bool,
             }
             
             let versions: Vec<FabricLoaderVersion> = response
@@ -898,7 +951,20 @@ async fn get_loader_versions(loader: String, game_version: String) -> Result<Vec
                 .await
                 .map_err(|e| e.to_string())?;
             
-            Ok(versions.into_iter().map(|v| v.loader.version).collect())
+            Ok(versions.into_iter().map(|v| {
+                let lower_v = v.loader.version.to_lowercase();
+                let v_type = if lower_v.contains("beta") || lower_v.contains("alpha") || lower_v.contains("rc") {
+                    "snapshot".to_string()
+                } else {
+                    "release".to_string()
+                };
+                
+                LoaderVersion {
+                    version: v.loader.version,
+                    release_time: None,
+                    version_type: v_type,
+                }
+            }).collect())
         }
         "forge" => {
             // Fetch Forge versions
@@ -908,7 +974,7 @@ async fn get_loader_versions(loader: String, game_version: String) -> Result<Vec
             );
             let response = client
                 .get(&url)
-                .header("User-Agent", "PaletheaLauncher/0.1.0")
+                .header("User-Agent", "PaletheaLauncher/0.1.3")
                 .send()
                 .await
                 .map_err(|e| e.to_string())?;
@@ -929,11 +995,20 @@ async fn get_loader_versions(loader: String, game_version: String) -> Result<Vec
             let latest_key = format!("{}-latest", game_version);
             
             if let Some(v) = promos.promos.get(&recommended_key) {
-                versions.push(v.clone());
+                versions.push(LoaderVersion {
+                    version: v.clone(),
+                    release_time: None,
+                    version_type: "recommended".to_string(),
+                });
             }
             if let Some(v) = promos.promos.get(&latest_key) {
-                if !versions.contains(v) {
-                    versions.push(v.clone());
+                // Check if latest is different from recommended
+                if !promos.promos.get(&recommended_key).map_or(false, |rec| rec == v) {
+                    versions.push(LoaderVersion {
+                        version: v.clone(),
+                        release_time: None,
+                        version_type: "latest".to_string(),
+                    });
                 }
             }
             
@@ -945,7 +1020,7 @@ async fn get_loader_versions(loader: String, game_version: String) -> Result<Vec
             let url = "https://maven.neoforged.net/api/maven/versions/releases/net/neoforged/neoforge";
             let response = client
                 .get(url)
-                .header("User-Agent", "PaletheaLauncher/0.1.0")
+                .header("User-Agent", "PaletheaLauncher/0.1.3")
                 .send()
                 .await
                 .map_err(|e| e.to_string())?;
@@ -960,8 +1035,7 @@ async fn get_loader_versions(loader: String, game_version: String) -> Result<Vec
                 .await
                 .map_err(|e| e.to_string())?;
             
-            // Filter versions for this game version (NeoForge versions start with MC version)
-            // e.g., 1.20.1 maps to 20.1.x versions
+            // Filter versions for this game version
             let mc_parts: Vec<&str> = game_version.split('.').collect();
             let prefix = if mc_parts.len() >= 2 {
                 format!("{}.{}", mc_parts.get(1).unwrap_or(&""), mc_parts.get(2).unwrap_or(&""))
@@ -969,11 +1043,16 @@ async fn get_loader_versions(loader: String, game_version: String) -> Result<Vec
                 game_version.clone()
             };
             
-            let filtered: Vec<String> = data.versions
+            let filtered: Vec<LoaderVersion> = data.versions
                 .into_iter()
                 .filter(|v| v.starts_with(&prefix))
                 .rev()
                 .take(20)
+                .map(|v| LoaderVersion {
+                    version: v,
+                    release_time: None,
+                    version_type: "release".to_string(),
+                })
                 .collect();
             
             Ok(filtered)
@@ -1006,6 +1085,24 @@ async fn search_modrinth(
 }
 
 #[tauri::command]
+async fn get_modpack_total_size(version_id: String) -> Result<u64, String> {
+    modrinth::get_modpack_total_size(&version_id)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn install_modpack(
+    instance_id: String,
+    version_id: String,
+    app_handle: tauri::AppHandle,
+) -> Result<(), String> {
+    modrinth::install_modpack(&app_handle, &instance_id, &version_id)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
 async fn get_modrinth_project(project_id: String) -> Result<modrinth::ModrinthProject, String> {
     modrinth::get_project(&project_id)
         .await
@@ -1028,8 +1125,9 @@ async fn install_modrinth_file(
     instance_id: String,
     file_url: String,
     filename: String,
-    file_type: String, // "mod", "resourcepack", "shader"
+    file_type: String, // "mod", "resourcepack", "shader", "datapack"
     project_id: Option<String>,
+    world_name: Option<String>,
 ) -> Result<(), String> {
     let instance = instances::get_instance(&instance_id)?;
     
@@ -1037,6 +1135,13 @@ async fn install_modrinth_file(
         "mod" => files::get_mods_dir(&instance),
         "resourcepack" => files::get_resourcepacks_dir(&instance),
         "shader" => files::get_shaderpacks_dir(&instance),
+        "datapack" => {
+            if let Some(wname) = world_name {
+                files::get_saves_dir(&instance).join(wname).join("datapacks")
+            } else {
+                return Err("World name required for datapack installation".to_string());
+            }
+        },
         _ => return Err("Invalid file type".to_string()),
     };
     
@@ -1125,6 +1230,18 @@ fn delete_instance_world(instance_id: String, folder_name: String) -> Result<(),
 }
 
 #[tauri::command]
+fn get_world_datapacks(instance_id: String, world_name: String) -> Result<Vec<files::Datapack>, String> {
+    let instance = instances::get_instance(&instance_id)?;
+    Ok(files::list_datapacks(&instance, &world_name))
+}
+
+#[tauri::command]
+fn delete_instance_datapack(instance_id: String, world_name: String, filename: String) -> Result<(), String> {
+    let instance = instances::get_instance(&instance_id)?;
+    files::delete_datapack(&instance, &world_name, &filename)
+}
+
+#[tauri::command]
 fn get_instance_screenshots(instance_id: String) -> Result<Vec<files::Screenshot>, String> {
     let instance = instances::get_instance(&instance_id)?;
     Ok(files::list_screenshots(&instance))
@@ -1134,6 +1251,19 @@ fn get_instance_screenshots(instance_id: String) -> Result<Vec<files::Screenshot
 fn delete_instance_screenshot(instance_id: String, filename: String) -> Result<(), String> {
     let instance = instances::get_instance(&instance_id)?;
     files::delete_screenshot(&instance, &filename)
+}
+
+#[tauri::command]
+fn rename_instance_screenshot(instance_id: String, old_filename: String, new_filename: String) -> Result<(), String> {
+    let instance = instances::get_instance(&instance_id)?;
+    files::rename_screenshot(&instance, &old_filename, &new_filename)
+}
+
+#[tauri::command]
+fn open_instance_screenshot(instance_id: String, filename: String) -> Result<(), String> {
+    let instance = instances::get_instance(&instance_id)?;
+    let path = files::get_screenshots_dir(&instance).join(filename);
+    files::open_path(&path)
 }
 
 #[tauri::command]
@@ -1163,7 +1293,7 @@ fn open_instance_folder(instance_id: String, folder_type: String) -> Result<(), 
         _ => instance.get_game_directory(),
     };
     
-    files::open_folder(&path)
+    files::open_path(&path)
 }
 
 #[tauri::command]
@@ -1219,6 +1349,7 @@ pub fn run() {
             clone_instance,
             get_instance_details,
             set_instance_logo,
+            set_instance_logo_from_url,
             clear_instance_logo,
             // Download commands
             download_version,
@@ -1267,6 +1398,8 @@ pub fn run() {
             search_modrinth,
             get_modrinth_project,
             get_modrinth_versions,
+            get_modpack_total_size,
+            install_modpack,
             install_modrinth_file,
             // File management commands
             get_instance_mods,
@@ -1278,8 +1411,12 @@ pub fn run() {
             delete_instance_shaderpack,
             get_instance_worlds,
             delete_instance_world,
+            get_world_datapacks,
+            delete_instance_datapack,
             get_instance_screenshots,
             delete_instance_screenshot,
+            rename_instance_screenshot,
+            open_instance_screenshot,
             get_instance_log,
             get_instance_servers,
             open_instance_folder,

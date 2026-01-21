@@ -310,6 +310,25 @@ pub fn build_classpath(version_details: &VersionDetails) -> String {
                     classpath_parts.push(lib_path.to_string_lossy().to_string());
                 }
             }
+            
+            // Also include native classifier JARs if they exist for this OS
+            if let Some(natives) = &library.natives {
+                let os_name = versions::get_os_name();
+                if let Some(classifier_key) = natives.get(os_name) {
+                    // Replace ${arch} placeholder for the key if present
+                    let arch = if cfg!(target_arch = "x86_64") { "64" } else { "32" };
+                    let actual_key = classifier_key.replace("${arch}", arch);
+                    
+                    if let Some(classifiers) = &downloads.classifiers {
+                        if let Some(native_artifact) = classifiers.get(&actual_key) {
+                            let lib_path = libraries_dir.join(&native_artifact.path);
+                            if lib_path.exists() {
+                                classpath_parts.push(lib_path.to_string_lossy().to_string());
+                            }
+                        }
+                    }
+                }
+            }
         } else {
             // Fallback for libraries without explicit download info (common in Forge/Fabric)
             let lib_path = libraries_dir.join(versions::library_name_to_path(&library.name));

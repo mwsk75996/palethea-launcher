@@ -1,11 +1,13 @@
 import { useState, useEffect } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import ConfirmModal from './ConfirmModal';
+import WorldDatapacks from './WorldDatapacks';
 
 function InstanceWorlds({ instance }) {
   const [worlds, setWorlds] = useState([]);
   const [loading, setLoading] = useState(true);
   const [deleteConfirm, setDeleteConfirm] = useState({ show: false, world: null });
+  const [selectedWorld, setSelectedWorld] = useState(null);
 
   useEffect(() => {
     loadWorlds();
@@ -23,7 +25,7 @@ function InstanceWorlds({ instance }) {
 
   const handleOpenFolder = async () => {
     try {
-      await invoke('open_instance_folder', { 
+      await invoke('open_instance_folder', {
         instanceId: instance.id,
         folderType: 'saves'
       });
@@ -39,11 +41,11 @@ function InstanceWorlds({ instance }) {
   const confirmDelete = async () => {
     const world = deleteConfirm.world;
     setDeleteConfirm({ show: false, world: null });
-    
+
     try {
-      await invoke('delete_instance_world', { 
-        instanceId: instance.id, 
-        worldName: world.folder_name 
+      await invoke('delete_instance_world', {
+        instanceId: instance.id,
+        worldName: world.folder_name
       });
       await loadWorlds();
     } catch (error) {
@@ -76,7 +78,7 @@ function InstanceWorlds({ instance }) {
       case 1: return 'Creative';
       case 2: return 'Adventure';
       case 3: return 'Spectator';
-      default: return 'Unknown';
+      default: return 'Unknown Mode';
     }
   };
 
@@ -85,6 +87,16 @@ function InstanceWorlds({ instance }) {
       <div className="worlds-tab">
         <p>Loading worlds...</p>
       </div>
+    );
+  }
+
+  if (selectedWorld) {
+    return (
+      <WorldDatapacks
+        instance={instance}
+        world={selectedWorld}
+        onBack={() => setSelectedWorld(null)}
+      />
     );
   }
 
@@ -106,10 +118,10 @@ function InstanceWorlds({ instance }) {
           <div key={world.folder_name} className="world-card">
             <div className="world-icon">
               {world.icon ? (
-                <img 
-                  src={`data:image/png;base64,${world.icon}`} 
-                  alt="" 
-                  style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '8px' }} 
+                <img
+                  src={`data:image/png;base64,${world.icon}`}
+                  alt=""
+                  style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: '8px' }}
                 />
               ) : (
                 <span style={{ color: 'var(--text-secondary)' }}>W</span>
@@ -118,12 +130,19 @@ function InstanceWorlds({ instance }) {
             <div className="world-info">
               <h4>{world.name}</h4>
               <div className="world-meta">
-                <span>{getGameModeIcon(world.gamemode)}</span>
+                <span>{getGameModeIcon(world.game_mode)}</span>
                 <span>{formatSize(world.size)}</span>
                 <span>Last played: {formatDate(world.last_played)}</span>
               </div>
             </div>
             <div className="world-actions">
+              <button
+                className="open-btn"
+                onClick={() => setSelectedWorld(world)}
+                style={{ background: 'rgba(232, 156, 136, 0.1)', color: 'var(--accent)', border: '1px solid rgba(232, 156, 136, 0.2)' }}
+              >
+                Datapacks
+              </button>
               <button className="delete-btn" onClick={() => handleDeleteWorld(world)}>
                 Delete
               </button>

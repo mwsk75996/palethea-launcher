@@ -74,9 +74,11 @@
   padding: 12px;
   border-top: 1px solid var(--border);
   position: relative;
+  display: flex;
+  flex-direction: column;
 }
 
-.user-info {
+.account-viewer {
   display: flex;
   align-items: center;
   gap: 12px;
@@ -86,7 +88,7 @@
   transition: background 0.15s ease;
 }
 
-.user-info:hover {
+.account-viewer:hover {
   background: var(--background);
 }
 
@@ -113,12 +115,6 @@
 .sidebar-head-2d .head-overlay {
   position: absolute;
   background-repeat: no-repeat;
-}
-  font-size: 16px;
-  font-weight: 600;
-  color: var(--background);
-  overflow: hidden;
-  position: relative;
 }
 
 .skin-head {
@@ -290,4 +286,40 @@
 
 .account-add:hover {
   background: var(--background);
+}
+
+.console-sidebar-btn {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 10px 14px;
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 8px;
+  color: var(--muted);
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  margin-bottom: 8px;
+}
+
+.console-sidebar-btn:hover {
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--foreground);
+  border-color: rgba(255, 255, 255, 0.1);
+}
+
+.console-sidebar-btn.active {
+  background: rgba(232, 156, 136, 0.1);
+  color: var(--accent);
+  border-color: rgba(232, 156, 136, 0.2);
+}
+
+.console-sidebar-btn svg {
+  opacity: 0.7;
+}
+
+.console-sidebar-btn.active svg {
+  opacity: 1;
 }

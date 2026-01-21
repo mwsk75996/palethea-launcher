@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { open } from '@tauri-apps/plugin-shell';
 import './Sidebar.css';
 
@@ -15,10 +15,28 @@ function Sidebar({
   onRemoveAccount,
   skinRefreshKey,
   currentSkinTexture,
-  skinCache = {}
+  skinCache = {},
+  launcherSettings,
+  onOpenAccountManager
 }) {
   const [showAccountMenu, setShowAccountMenu] = useState(false);
   const [failedImages, setFailedImages] = useState({});
+  const accountMenuRef = useRef(null);
+
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (accountMenuRef.current && !accountMenuRef.current.contains(event.target)) {
+        setShowAccountMenu(false);
+      }
+    };
+
+    if (showAccountMenu) {
+      document.addEventListener('mousedown', handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [showAccountMenu]);
 
   const SkinHead2D = ({ src, size = 32 }) => (
     <div className="sidebar-head-2d" style={{ width: `${size}px`, height: `${size}px` }}>
@@ -49,7 +67,6 @@ function Sidebar({
     { id: 'instances', label: 'Instances', icon: null },
     { id: 'skins', label: 'Skins', icon: null },
     { id: 'updates', label: 'Updates', icon: null },
-    { id: 'console', label: 'Console', icon: null },
     { id: 'settings', label: 'Settings', icon: null },
   ];
 
@@ -94,10 +111,30 @@ function Sidebar({
         ))}
       </nav>
 
-      <div className="sidebar-footer">
+      <div className="sidebar-footer" ref={accountMenuRef}>
+        {launcherSettings?.enable_console && (
+          <button
+            className={`console-sidebar-btn ${activeTab === 'console' ? 'active' : ''}`}
+            onClick={() => onTabChange('console')}
+            title="Open Console"
+          >
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="4 17 10 11 4 5" />
+              <line x1="12" y1="19" x2="20" y2="19" />
+            </svg>
+            <span>Console</span>
+          </button>
+        )}
+
         <div
-          className="user-info"
-          onClick={() => setShowAccountMenu(!showAccountMenu)}
+          className={`account-viewer ${showAccountMenu ? 'expanded' : ''}`}
+          onClick={() => {
+            if (launcherSettings?.account_preview_mode === 'advanced') {
+              onOpenAccountManager();
+            } else {
+              setShowAccountMenu(!showAccountMenu);
+            }
+          }}
         >
           <div className="user-avatar">
             {currentSkinTexture ? (

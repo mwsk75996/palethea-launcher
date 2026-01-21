@@ -8,6 +8,8 @@ pub struct LauncherSettings {
     pub java_path: Option<String>,
     pub java_args: Option<String>,
     pub max_memory: Option<u32>,
+    pub enable_console: Option<bool>,
+    pub account_preview_mode: Option<String>,
 }
 
 impl Default for LauncherSettings {
@@ -16,6 +18,8 @@ impl Default for LauncherSettings {
             java_path: None,
             java_args: None,
             max_memory: Some(2048),
+            enable_console: Some(false),
+            account_preview_mode: Some("simple".to_string()),
         }
     }
 }

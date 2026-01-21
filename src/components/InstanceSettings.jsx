@@ -9,7 +9,7 @@ function InstanceSettings({ instance, onSave, onInstanceUpdated }) {
   const [modLoader, setModLoader] = useState(instance.mod_loader || 'Vanilla');
   const [modLoaderVersion, setModLoaderVersion] = useState(instance.mod_loader_version || '');
   const [javaPath, setJavaPath] = useState(instance.java_path || '');
-  const [javaDownloadVersion, setJavaDownloadVersion] = useState('17');
+  const [javaDownloadVersion, setJavaDownloadVersion] = useState('21');
   const [javaDownloading, setJavaDownloading] = useState(false);
   const [javaDownloadError, setJavaDownloadError] = useState('');
   const [memory, setMemory] = useState(instance.memory_max || 4096);
@@ -74,9 +74,9 @@ function InstanceSettings({ instance, onSave, onInstanceUpdated }) {
   const loadLoaderVersions = async (loader) => {
     setLoadingLoaders(true);
     try {
-      const vers = await invoke('get_loader_versions', { 
+      const vers = await invoke('get_loader_versions', {
         loader: loader.toLowerCase(),
-        gameVersion: versionId 
+        gameVersion: versionId
       });
       setLoaderVersions(vers);
       if (vers.length > 0 && !modLoaderVersion) {
@@ -90,7 +90,7 @@ function InstanceSettings({ instance, onSave, onInstanceUpdated }) {
   };
 
   const checkChanges = () => {
-    const changed = 
+    const changed =
       name !== instance.name ||
       versionId !== instance.version_id ||
       modLoader !== (instance.mod_loader || 'Vanilla') ||
@@ -105,12 +105,12 @@ function InstanceSettings({ instance, onSave, onInstanceUpdated }) {
     setSaving(true);
     try {
       // If mod loader changed to Fabric, install it first
-      if (modLoader === 'Fabric' && modLoaderVersion && 
-          (modLoader !== instance.mod_loader || modLoaderVersion !== instance.mod_loader_version)) {
+      if (modLoader === 'Fabric' && modLoaderVersion &&
+        (modLoader !== instance.mod_loader || modLoaderVersion !== instance.mod_loader_version)) {
         try {
-          await invoke('install_fabric', { 
-            instanceId: instance.id, 
-            loaderVersion: modLoaderVersion 
+          await invoke('install_fabric', {
+            instanceId: instance.id,
+            loaderVersion: modLoaderVersion
           });
         } catch (error) {
           console.error('Failed to install Fabric:', error);
@@ -119,7 +119,7 @@ function InstanceSettings({ instance, onSave, onInstanceUpdated }) {
           return;
         }
       }
-      
+
       const updatedInstance = {
         ...instance,
         name,
@@ -266,8 +266,8 @@ function InstanceSettings({ instance, onSave, onInstanceUpdated }) {
             <div className="loader-version-select">
               <div className="setting-row">
                 <label>{modLoader} Version</label>
-                <select 
-                  value={modLoaderVersion} 
+                <select
+                  value={modLoaderVersion}
                   onChange={(e) => setModLoaderVersion(e.target.value)}
                   disabled={loadingLoaders}
                 >
@@ -299,8 +299,8 @@ function InstanceSettings({ instance, onSave, onInstanceUpdated }) {
               onChange={(e) => setJavaDownloadVersion(e.target.value)}
             >
               <option value="8">Java 8 (Legacy)</option>
-              <option value="17">Java 17 (Recommended)</option>
-              <option value="21">Java 21</option>
+              <option value="17">Java 17</option>
+              <option value="21">Java 21 (Recommended)</option>
             </select>
             <button
               className="btn btn-secondary"

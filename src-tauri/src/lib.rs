@@ -423,6 +423,14 @@ async fn download_java_for_instance(instance_id: String, version: u32) -> Result
     instances::update_instance(updated)
 }
 
+#[tauri::command]
+async fn download_java_global(version: u32) -> Result<String, String> {
+    let java_path = java::download_java(version)
+        .await
+        .map_err(|e| e.to_string())?;
+    Ok(java_path.to_string_lossy().to_string())
+}
+
 // ============== AUTH COMMANDS ==============
 
 #[tauri::command]
@@ -1226,6 +1234,7 @@ pub fn run() {
             get_settings,
             save_settings,
             download_java_for_instance,
+            download_java_global,
             // Auth commands
             start_microsoft_login,
             poll_microsoft_login,

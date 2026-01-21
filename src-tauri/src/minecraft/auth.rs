@@ -431,27 +431,27 @@ pub async fn upload_mc_skin(mc_token: &str, file_path: &str, variant: &str) -> R
     Ok(())
 }
 
-/// Reset skin to default (Steve/Alex)
+/// Reset skin to default Steve
 pub async fn reset_mc_skin(mc_token: &str) -> Result<(), Box<dyn Error + Send + Sync>> {
-    let profile = get_full_profile(mc_token).await?;
-    
-    // Some profiles might not have a custom skin active (already default)
-    let active_skin = match profile.skins.iter().find(|s| s.state == "ACTIVE") {
-        Some(s) => s,
-        None => return Ok(()), // Already using default skin, treat as success
-    };
-        
     let client = reqwest::Client::new();
+    
+    // Upload the default Steve skin via URL
+    // This is the official Mojang Steve texture URL
     let response = client
-        .delete(format!("https://api.minecraftservices.com/minecraft/profile/skins/{}", active_skin.id))
+        .post("https://api.minecraftservices.com/minecraft/profile/skins")
         .header("Authorization", format!("Bearer {}", mc_token))
+        .header("Content-Type", "application/json")
+        .json(&serde_json::json!({
+            "variant": "classic",
+            "url": "http://textures.minecraft.net/texture/31f477eb1a7beee631c2ca64d06f8f68fa93a3386d04452ab27f43acdf1b60cb"
+        }))
         .send()
         .await?;
         
     if !response.status().is_success() {
         let status = response.status();
         let body = response.text().await.unwrap_or_else(|_| "Unknown error".to_string());
-        return Err(format!("Failed to reset (Status {}): {}", status, body).into());
+        return Err(format!("Failed to reset skin (Status {}): {}", status, body).into());
     }
     
     Ok(())

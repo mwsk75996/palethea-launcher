@@ -13,6 +13,7 @@ import LoginPrompt from './components/LoginPrompt';
 import ConfirmModal from './components/ConfirmModal';
 import Updates from './components/Updates';
 import Console from './components/Console';
+import AccountManagerModal from './components/AccountManagerModal';
 import './App.css';
 
 function App() {
@@ -35,6 +36,8 @@ function App() {
   const [currentSkinUrl, setCurrentSkinUrl] = useState(null);
   const [skinCache, setSkinCache] = useState({});
   const [logs, setLogs] = useState([]);
+  const [launcherSettings, setLauncherSettings] = useState({ enable_console: false });
+  const [showAccountManager, setShowAccountManager] = useState(false);
 
   useEffect(() => {
     // Load all cached skins on startup
@@ -102,6 +105,15 @@ function App() {
       setRunningInstances(result);
     } catch (error) {
       console.error('Failed to load running instances:', error);
+    }
+  }, []);
+
+  const loadLauncherSettings = useCallback(async () => {
+    try {
+      const settings = await invoke('get_settings');
+      setLauncherSettings(settings);
+    } catch (error) {
+      console.error('Failed to load launcher settings:', error);
     }
   }, []);
 
@@ -207,6 +219,7 @@ function App() {
     loadInstances();
     loadAccounts();
     loadRunningInstances();
+    loadLauncherSettings();
 
     // Poll running instances periodically (process state can change without events)
     const runningPoll = setInterval(loadRunningInstances, 2000);
@@ -633,6 +646,8 @@ function App() {
             isLoggedIn={activeAccount?.isLoggedIn || false}
             onLogin={handleLogin}
             onLogout={handleLogout}
+            launcherSettings={launcherSettings}
+            onSettingsUpdated={loadLauncherSettings}
           />
         );
       case 'skins':
@@ -644,9 +659,13 @@ function App() {
               setSkinRefreshKey(Date.now());
               setCurrentSkinUrl(url || null);
               if (activeAccount?.uuid) {
-                if (url && url.startsWith('http')) {
-                  localStorage.setItem(`skin_${activeAccount.uuid}`, url);
-                } else if (!url) {
+                // Update the skin cache so dropdown shows new head immediately
+                if (url) {
+                  setSkinCache(prev => ({ ...prev, [activeAccount.uuid]: url }));
+                  if (url.startsWith('http')) {
+                    localStorage.setItem(`skin_${activeAccount.uuid}`, url);
+                  }
+                } else {
                   localStorage.removeItem(`skin_${activeAccount.uuid}`);
                 }
               }
@@ -679,6 +698,8 @@ function App() {
         skinRefreshKey={skinRefreshKey}
         currentSkinTexture={currentSkinUrl}
         skinCache={skinCache}
+        launcherSettings={launcherSettings}
+        onOpenAccountManager={() => setShowAccountManager(true)}
       />
       <main className="main-content">
         {renderContent()}
@@ -781,6 +802,18 @@ function App() {
           onCancel={confirmModal.onCancel}
         />
       )}
+
+      <AccountManagerModal
+        show={showAccountManager}
+        onClose={() => setShowAccountManager(false)}
+        accounts={accounts}
+        activeAccount={activeAccount}
+        onSwitchAccount={handleSwitchAccount}
+        onAddAccount={handleAddAccount}
+        onRemoveAccount={handleRemoveAccount}
+        skinCache={skinCache}
+        skinRefreshKey={skinRefreshKey}
+      />
     </div>
   );
 }

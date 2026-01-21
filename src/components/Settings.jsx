@@ -1,9 +1,10 @@
 import { useState, useEffect } from 'react';
+import { getVersion } from '@tauri-apps/api/app';
 import { invoke } from '@tauri-apps/api/core';
 import { open } from '@tauri-apps/plugin-dialog';
 import './Settings.css';
 
-function Settings({ username, onSetUsername, isLoggedIn, onLogin, onLogout }) {
+function Settings({ username, onSetUsername, isLoggedIn, onLogin, onLogout, launcherSettings, onSettingsUpdated }) {
   const [newUsername, setNewUsername] = useState(username);
   const [javaPath, setJavaPath] = useState('');
   const [customJavaPath, setCustomJavaPath] = useState('');
@@ -13,12 +14,17 @@ function Settings({ username, onSetUsername, isLoggedIn, onLogin, onLogout }) {
   const [diskUsage, setDiskUsage] = useState(null);
   const [downloadedVersions, setDownloadedVersions] = useState([]);
   const [isCleaning, setIsCleaning] = useState(false);
+  const [appVersion, setAppVersion] = useState('0.1.3');
+  const [javaDownloadVersion, setJavaDownloadVersion] = useState('21');
+  const [javaDownloading, setJavaDownloading] = useState(false);
+  const [javaDownloadError, setJavaDownloadError] = useState('');
 
   useEffect(() => {
     checkJava();
     getDataDirectory();
     loadCustomJavaPath();
     loadStorageInfo();
+    getVersion().then(setAppVersion);
   }, []);
 
   useEffect(() => {
@@ -69,7 +75,7 @@ function Settings({ username, onSetUsername, isLoggedIn, onLogin, onLogout }) {
           extensions: process.platform === 'win32' ? ['exe'] : ['*']
         }]
       });
-      
+
       if (selected) {
         setCustomJavaPath(selected);
         await invoke('set_java_path', { path: selected });
@@ -90,17 +96,34 @@ function Settings({ username, onSetUsername, isLoggedIn, onLogin, onLogout }) {
     }
   };
 
+  const handleDownloadJava = async () => {
+    setJavaDownloading(true);
+    setJavaDownloadError('');
+    try {
+      const downloadedPath = await invoke('download_java_global', {
+        version: parseInt(javaDownloadVersion, 10),
+      });
+      setCustomJavaPath(downloadedPath);
+      await invoke('set_java_path', { path: downloadedPath });
+      await checkJava();
+    } catch (error) {
+      console.error('Failed to download Java:', error);
+      setJavaDownloadError('Failed to download Java: ' + error);
+    }
+    setJavaDownloading(false);
+  };
+
   const handleMicrosoftLogin = async () => {
     setIsLoggingIn(true);
     try {
       const codeInfo = await invoke('start_microsoft_login');
       setLoginCode(codeInfo);
-      
+
       // Poll for login completion
       const pollInterval = setInterval(async () => {
         try {
-          const newUser = await invoke('poll_microsoft_login', { 
-            deviceCode: codeInfo.device_code 
+          const newUser = await invoke('poll_microsoft_login', {
+            deviceCode: codeInfo.device_code
           });
           clearInterval(pollInterval);
           setLoginCode(null);
@@ -118,14 +141,14 @@ function Settings({ username, onSetUsername, isLoggedIn, onLogin, onLogout }) {
           }
         }
       }, (codeInfo.interval || 5) * 1000);
-      
+
       // Timeout after 5 minutes
       setTimeout(() => {
         clearInterval(pollInterval);
         setLoginCode(null);
         setIsLoggingIn(false);
       }, 5 * 60 * 1000);
-      
+
     } catch (error) {
       console.error('Failed to start login:', error);
       setIsLoggingIn(false);
@@ -136,7 +159,7 @@ function Settings({ username, onSetUsername, isLoggedIn, onLogin, onLogout }) {
     try {
       const usage = await invoke('get_disk_usage');
       setDiskUsage(usage);
-      
+
       const versions = await invoke('get_downloaded_versions');
       setDownloadedVersions(versions);
     } catch (error) {
@@ -148,7 +171,7 @@ function Settings({ username, onSetUsername, isLoggedIn, onLogin, onLogout }) {
     if (!confirm('Are you sure you want to clear the assets cache? This will save space but requires re-downloading assets when launching games.')) {
       return;
     }
-    
+
     setIsCleaning(true);
     try {
       await invoke('clear_assets_cache');
@@ -164,7 +187,7 @@ function Settings({ username, onSetUsername, isLoggedIn, onLogin, onLogout }) {
     if (!confirm(`Are you sure you want to delete Minecraft version ${versionId}?`)) {
       return;
     }
-    
+
     try {
       await invoke('delete_version', { versionId });
       await loadStorageInfo();
@@ -205,7 +228,7 @@ function Settings({ username, onSetUsername, isLoggedIn, onLogin, onLogout }) {
       <div className="settings-content">
         <section className="settings-section">
           <h2>Account</h2>
-          
+
           {isLoggedIn ? (
             <div className="setting-item">
               <label>Microsoft Account</label>
@@ -227,8 +250,8 @@ function Settings({ username, onSetUsername, isLoggedIn, onLogin, onLogout }) {
                     <p>Enter code: <strong className="login-code">{loginCode.user_code}</strong></p>
                   </div>
                 ) : (
-                  <button 
-                    className="btn btn-primary" 
+                  <button
+                    className="btn btn-primary"
                     onClick={handleMicrosoftLogin}
                     disabled={isLoggingIn}
                   >
@@ -239,7 +262,7 @@ function Settings({ username, onSetUsername, isLoggedIn, onLogin, onLogout }) {
                   Sign in with your Microsoft account to play on online servers.
                 </p>
               </div>
-              
+
               <div className="setting-item">
                 <label>Offline Mode</label>
                 <div className="input-group">
@@ -275,7 +298,34 @@ function Settings({ username, onSetUsername, isLoggedIn, onLogin, onLogout }) {
               <span className="info-text">{javaPath}</span>
             </div>
           </div>
-          
+
+          <div className="setting-item">
+            <label>Quick Java Install</label>
+            <div className="input-group">
+              <select
+                value={javaDownloadVersion}
+                onChange={(e) => setJavaDownloadVersion(e.target.value)}
+              >
+                <option value="8">Java 8 (Legacy)</option>
+                <option value="17">Java 17</option>
+                <option value="21">Java 21 (Recommended)</option>
+              </select>
+              <button
+                className="btn btn-secondary"
+                onClick={handleDownloadJava}
+                disabled={javaDownloading}
+              >
+                {javaDownloading ? 'Downloading...' : 'Install'}
+              </button>
+            </div>
+            {javaDownloadError && (
+              <p className="setting-hint" style={{ color: '#f56565' }}>{javaDownloadError}</p>
+            )}
+            <p className="setting-hint">
+              Automatically download and set the selected Java version.
+            </p>
+          </div>
+
           <div className="setting-item">
             <label>Custom Java Path</label>
             <div className="input-group">
@@ -338,10 +388,10 @@ function Settings({ username, onSetUsername, isLoggedIn, onLogin, onLogout }) {
                   <span className="value">{formatSize(diskUsage.java)}</span>
                 </div>
               </div>
-              
+
               <div className="disk-actions">
-                <button 
-                  className="btn btn-secondary" 
+                <button
+                  className="btn btn-secondary"
                   onClick={handleClearAssets}
                   disabled={isCleaning}
                 >
@@ -363,8 +413,8 @@ function Settings({ username, onSetUsername, isLoggedIn, onLogin, onLogout }) {
                       <span className="version-id">{v.id}</span>
                       <span className="version-size">{formatSize(v.size)}</span>
                     </div>
-                    <button 
-                      className="btn-icon delete" 
+                    <button
+                      className="btn-icon delete"
                       onClick={() => handleDeleteVersion(v.id)}
                       title="Delete version files"
                     >
@@ -395,10 +445,59 @@ function Settings({ username, onSetUsername, isLoggedIn, onLogin, onLogout }) {
         </section>
 
         <section className="settings-section">
+          <h2>Interface</h2>
+          <div className="setting-item">
+            <div className="checkbox-row">
+              <label>Enable Console Button</label>
+              <input
+                type="checkbox"
+                className="ios-switch"
+                checked={launcherSettings?.enable_console || false}
+                onChange={async (e) => {
+                  const updated = {
+                    ...launcherSettings,
+                    enable_console: e.target.checked
+                  };
+                  await invoke('save_settings', { newSettings: updated });
+                  onSettingsUpdated();
+                }}
+              />
+            </div>
+            <p className="setting-hint">
+              Show a dedicated console button in the sidebar for debugging and logs.
+            </p>
+          </div>
+
+          <div className="setting-item">
+            <div className="checkbox-row">
+              <label>Account Preview Mode</label>
+              <select
+                value={launcherSettings?.account_preview_mode || 'simple'}
+                onChange={async (e) => {
+                  const updated = {
+                    ...launcherSettings,
+                    account_preview_mode: e.target.value
+                  };
+                  await invoke('save_settings', { newSettings: updated });
+                  onSettingsUpdated();
+                }}
+                className="setting-select"
+              >
+                <option value="simple">Simple (Dropdown)</option>
+                <option value="advanced">Advanced (Modal)</option>
+              </select>
+            </div>
+            <p className="setting-hint">
+              "Simple" uses a sidebar dropdown. "Advanced" uses a dedicated account management modal.
+            </p>
+          </div>
+        </section>
+
+        <section className="settings-section">
           <h2>About</h2>
           <div className="about-info">
             <h3>Palethea Launcher</h3>
-            <p className="version">Version 0.1.0</p>
+            <p className="version">Version {appVersion}</p>
             <p className="description">
               A custom Minecraft launcher built with Tauri and React.
             </p>

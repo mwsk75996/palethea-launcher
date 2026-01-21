@@ -679,27 +679,17 @@ pub async fn launch_game(
                     
                     // Merge arguments if present
                     if let Some(mod_args) = details.arguments {
-                        // If mod loader has modern arguments, clear legacy ones to avoid conflicts
+                        // If mod loader has modern arguments, use them to replace vanilla ones.
+                        // Modern mod loader manifests (like Forge 1.13+) usually include all necessary
+                        // arguments, so replacing is safer than extending and prevents duplication.
                         actual_version_details.minecraft_arguments = None;
-
-                        if let Some(base_args) = actual_version_details.arguments.as_mut() {
-                            if let Some(mod_game) = mod_args.game {
-                                if let Some(base_game) = base_args.game.as_mut() {
-                                    base_game.extend(mod_game);
-                                } else {
-                                    base_args.game = Some(mod_game);
-                                }
-                            }
-                            if let Some(mod_jvm) = mod_args.jvm {
-                                if let Some(base_jvm) = base_args.jvm.as_mut() {
-                                    base_jvm.extend(mod_jvm);
-                                } else {
-                                    base_args.jvm = Some(mod_jvm);
-                                }
-                            }
-                        } else {
-                            actual_version_details.arguments = Some(mod_args);
-                        }
+                        actual_version_details.arguments = Some(mod_args);
+                    }
+                    
+                    if let Some(mod_legacy_args) = details.minecraft_arguments {
+                        // For older Forge versions that use the legacy format
+                        actual_version_details.minecraft_arguments = Some(mod_legacy_args);
+                        actual_version_details.arguments = None;
                     }
                     
                     log::info!("Successfully merged mod loader version JSON: {}", json_path.display());

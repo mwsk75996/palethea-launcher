@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 
-function InstanceServers({ instance }) {
+function InstanceServers({ instance, onShowNotification }) {
   const [servers, setServers] = useState([]);
   const [loading, setLoading] = useState(true);
 
@@ -27,16 +27,11 @@ function InstanceServers({ instance }) {
       });
     } catch (error) {
       console.error('Failed to open folder:', error);
+      if (onShowNotification) {
+        onShowNotification(`Failed to open instance folder: ${error}`, 'error');
+      }
     }
   };
-
-  if (loading) {
-    return (
-      <div className="servers-tab">
-        <p>Loading servers...</p>
-      </div>
-    );
-  }
 
   return (
     <div className="servers-tab">

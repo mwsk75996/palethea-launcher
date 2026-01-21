@@ -3,7 +3,7 @@ import { invoke, convertFileSrc } from '@tauri-apps/api/core';
 import ConfirmModal from './ConfirmModal';
 import './ScreenshotContextMenu.css';
 
-function InstanceScreenshots({ instance }) {
+function InstanceScreenshots({ instance, onShowNotification }) {
   const [screenshots, setScreenshots] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedImage, setSelectedImage] = useState(null);
@@ -54,8 +54,9 @@ function InstanceScreenshots({ instance }) {
         folderType: 'screenshots'
       });
     } catch (error) {
-      console.error('Failed to open folder:', error);
-    }
+      console.error('Failed to open folder:', error);      if (onShowNotification) {
+        onShowNotification(`Failed to open screenshots folder: ${error}`, 'error');
+      }    }
   };
 
   const handleDelete = async (screenshot) => {

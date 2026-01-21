@@ -5,7 +5,7 @@ import { join } from '@tauri-apps/api/path';
 import { Box, ChevronDown, ChevronUp, Cpu, Save, Trash2 } from 'lucide-react';
 import VersionSelector from './VersionSelector';
 
-function InstanceSettings({ instance, onSave, onInstanceUpdated, onShowConfirm, onDelete }) {
+function InstanceSettings({ instance, onSave, onInstanceUpdated, onShowConfirm, onDelete, onShowNotification }) {
   const [name, setName] = useState(instance.name);
   const [versionId, setVersionId] = useState(instance.version_id);
   const [colorAccent, setColorAccent] = useState(instance.color_accent || '#ffffff');
@@ -156,6 +156,9 @@ function InstanceSettings({ instance, onSave, onInstanceUpdated, onShowConfirm, 
       await invoke('open_instance_folder', { instanceId: instance.id, folderType: 'root' });
     } catch (error) {
       console.error('Failed to open folder:', error);
+      if (onShowNotification) {
+        onShowNotification(`Failed to open instance folder: ${error}`, 'error');
+      }
     }
   };
 

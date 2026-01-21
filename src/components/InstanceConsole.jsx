@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 
-function InstanceConsole({ instance, onInstanceUpdated }) {
+function InstanceConsole({ instance, onInstanceUpdated, onShowNotification }) {
   const [logs, setLogs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [autoScroll, setAutoScroll] = useState(true);
@@ -69,8 +69,9 @@ function InstanceConsole({ instance, onInstanceUpdated }) {
         folderType: 'logs'
       });
     } catch (error) {
-      console.error('Failed to open folder:', error);
-    }
+      console.error('Failed to open folder:', error);      if (onShowNotification) {
+        onShowNotification(`Failed to open logs folder: ${error}`, 'error');
+      }    }
   };
 
   const handleAutoUpdateChange = async (checked) => {

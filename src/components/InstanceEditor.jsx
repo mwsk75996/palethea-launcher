@@ -11,7 +11,7 @@ import InstanceScreenshots from './InstanceScreenshots';
 import InstanceConsole from './InstanceConsole';
 import ConfirmModal from './ConfirmModal';
 
-function InstanceEditor({ instanceId, onClose, onUpdate, onLaunch, onStop, runningInstances, onDelete }) {
+function InstanceEditor({ instanceId, onClose, onUpdate, onLaunch, onStop, runningInstances, onDelete, onShowNotification }) {
   const [instance, setInstance] = useState(null);
   const [activeTab, setActiveTab] = useState('settings');
   const [loading, setLoading] = useState(true);
@@ -72,6 +72,9 @@ function InstanceEditor({ instanceId, onClose, onUpdate, onLaunch, onStop, runni
       await invoke('open_instance_folder', { instanceId, folderType: 'root' });
     } catch (error) {
       console.error('Failed to open instance folder:', error);
+      if (onShowNotification) {
+        onShowNotification(`Failed to open folder: ${error}`, 'error');
+      }
     }
   };
 
@@ -97,20 +100,21 @@ function InstanceEditor({ instanceId, onClose, onUpdate, onLaunch, onStop, runni
             onInstanceUpdated={handleInstanceUpdated} 
             onShowConfirm={handleShowConfirm}
             onDelete={onDelete}
+            onShowNotification={onShowNotification}
           />
         );
       case 'console':
-        return <InstanceConsole instance={instance} onInstanceUpdated={setInstance} />;
+        return <InstanceConsole instance={instance} onInstanceUpdated={setInstance} onShowNotification={onShowNotification} />;
       case 'mods':
-        return <InstanceMods instance={instance} onShowConfirm={handleShowConfirm} />;
+        return <InstanceMods instance={instance} onShowConfirm={handleShowConfirm} onShowNotification={onShowNotification} />;
       case 'resources':
-        return <InstanceResources instance={instance} />;
+        return <InstanceResources instance={instance} onShowNotification={onShowNotification} />;
       case 'worlds':
-        return <InstanceWorlds instance={instance} />;
+        return <InstanceWorlds instance={instance} onShowNotification={onShowNotification} />;
       case 'servers':
-        return <InstanceServers instance={instance} />;
+        return <InstanceServers instance={instance} onShowNotification={onShowNotification} />;
       case 'screenshots':
-        return <InstanceScreenshots instance={instance} />;
+        return <InstanceScreenshots instance={instance} onShowNotification={onShowNotification} />;
       default:
         return null;
     }

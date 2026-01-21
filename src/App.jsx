@@ -715,6 +715,7 @@ function App() {
           onLaunch={handleLaunchInstance}
           onStop={handleStopInstance}
           runningInstances={runningInstances}
+          onShowNotification={showNotification}
           onDelete={(id) => {
             performDeleteInstance(id);
             setEditingInstanceId(null);

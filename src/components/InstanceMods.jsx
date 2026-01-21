@@ -3,7 +3,7 @@ import { invoke } from '@tauri-apps/api/core';
 import ConfirmModal from './ConfirmModal';
 import ModVersionModal from './ModVersionModal';
 
-function InstanceMods({ instance, onShowConfirm }) {
+function InstanceMods({ instance, onShowConfirm, onShowNotification }) {
   const [activeSubTab, setActiveSubTab] = useState('installed');
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState([]);
@@ -207,6 +207,9 @@ function InstanceMods({ instance, onShowConfirm }) {
       });
     } catch (error) {
       console.error('Failed to open folder:', error);
+      if (onShowNotification) {
+        onShowNotification(`Failed to open mods folder: ${error}`, 'error');
+      }
     }
   };
 
@@ -218,6 +221,9 @@ function InstanceMods({ instance, onShowConfirm }) {
       });
     } catch (error) {
       console.error('Failed to open folder:', error);
+      if (onShowNotification) {
+        onShowNotification(`Failed to open config folder: ${error}`, 'error');
+      }
     }
   };
 

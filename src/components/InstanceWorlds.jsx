@@ -3,7 +3,7 @@ import { invoke } from '@tauri-apps/api/core';
 import ConfirmModal from './ConfirmModal';
 import WorldDatapacks from './WorldDatapacks';
 
-function InstanceWorlds({ instance }) {
+function InstanceWorlds({ instance, onShowNotification }) {
   const [worlds, setWorlds] = useState([]);
   const [loading, setLoading] = useState(true);
   const [deleteConfirm, setDeleteConfirm] = useState({ show: false, world: null });
@@ -31,6 +31,9 @@ function InstanceWorlds({ instance }) {
       });
     } catch (error) {
       console.error('Failed to open folder:', error);
+      if (onShowNotification) {
+        onShowNotification(`Failed to open worlds folder: ${error}`, 'error');
+      }
     }
   };
 

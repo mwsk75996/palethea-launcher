@@ -1326,7 +1326,7 @@ fn get_instance_servers(instance_id: String) -> Result<Vec<files::Server>, Strin
 }
 
 #[tauri::command]
-fn open_instance_folder(app: AppHandle, instance_id: String, folder_type: String) -> Result<(), String> {
+async fn open_instance_folder(app: AppHandle, instance_id: String, folder_type: String) -> Result<(), String> {
     let instance = instances::get_instance(&instance_id)?;
     
     let path = match folder_type.as_str() {
@@ -1345,8 +1345,14 @@ fn open_instance_folder(app: AppHandle, instance_id: String, folder_type: String
     if !path.exists() {
         let _ = std::fs::create_dir_all(&path);
     }
+
+    // Canonicalize to ensure we have a clean absolute path for the shell
+    let path_to_open = match path.canonicalize() {
+        Ok(p) => p.to_string_lossy().to_string(),
+        Err(_) => path.to_string_lossy().to_string(),
+    };
     
-    app.shell().open(path.to_string_lossy(), None).map_err(|e| e.to_string())
+    app.shell().open(path_to_open, None).map_err(|e| e.to_string())
 }
 
 #[tauri::command]

@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import ConfirmModal from './ConfirmModal';
 
-function InstanceResources({ instance }) {
+function InstanceResources({ instance, onShowNotification }) {
   const [activeSubTab, setActiveSubTab] = useState('resourcepacks');
   const [resourcePacks, setResourcePacks] = useState([]);
   const [shaderPacks, setShaderPacks] = useState([]);
@@ -124,7 +124,9 @@ function InstanceResources({ instance }) {
       });
 
       if (versions.length === 0) {
-        alert('No compatible version found');
+        if (onShowNotification) {
+          onShowNotification('No compatible version found', 'error');
+        }
         setInstalling(null);
         return;
       }
@@ -143,7 +145,9 @@ function InstanceResources({ instance }) {
       await loadResources();
     } catch (error) {
       console.error('Failed to install:', error);
-      alert('Failed to install: ' + error);
+      if (onShowNotification) {
+        onShowNotification(`Failed to install: ${error}`, 'error');
+      }
     }
     setInstalling(null);
   };
@@ -182,24 +186,24 @@ function InstanceResources({ instance }) {
       });
     } catch (error) {
       console.error('Failed to open folder:', error);
+      if (onShowNotification) {
+        onShowNotification(`Failed to open resource packs folder: ${error}`, 'error');
+      }
     }
   };
 
   const handleOpenShadersFolder = async () => {
     try {
-      await invoke('open_instance_folder', { 
+      await invoke('open_instance_folder', {
         instanceId: instance.id,
         folderType: 'shaderpacks'
       });
     } catch (error) {
       console.error('Failed to open folder:', error);
+      if (onShowNotification) {
+        onShowNotification(`Failed to open shader packs folder: ${error}`, 'error');
+      }
     }
-  };
-
-  const formatDownloads = (num) => {
-    if (num >= 1000000) return (num / 1000000).toFixed(1) + 'M';
-    if (num >= 1000) return (num / 1000).toFixed(1) + 'K';
-    return num.toString();
   };
 
   const displayItems = searchQuery.trim() ? searchResults : popularItems;

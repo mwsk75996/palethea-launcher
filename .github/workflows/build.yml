@@ -1,12 +1,11 @@
 name: Build & Release
 
+# ----------
+# Workflow Triggers
+# Description: Only runs on tag pushes (releases) and PRs. Branch pushes are handled by PRs.
+# ----------
 on:
   push:
-    branches: [main, master]
-    paths-ignore:
-      - '**.md'
-      - '.gitignore'
-      - 'LICENSE'
     tags:
       - 'v*'
   pull_request:

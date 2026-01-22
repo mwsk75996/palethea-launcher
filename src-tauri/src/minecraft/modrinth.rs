@@ -11,7 +11,9 @@ use crate::minecraft::downloader::DownloadProgress;
 use crate::minecraft::{instances, fabric, forge};
 
 const MODRINTH_API_BASE: &str = "https://api.modrinth.com/v2";
-const USER_AGENT: &str = "PaletheaLauncher/0.1.0 (github.com/PaletheaLauncher)";
+fn get_user_agent() -> String {
+    format!("PaletheaLauncher/{} (github.com/PaletheaLauncher)", super::get_launcher_version())
+}
 
 // Rate limiter: Modrinth allows ~300 requests/min, we'll be conservative with 10 concurrent
 static MODRINTH_SEMAPHORE: LazyLock<Semaphore> = LazyLock::new(|| Semaphore::new(10));
@@ -140,7 +142,7 @@ pub async fn search_projects(
     
     let response = client
         .get(&url)
-        .header("User-Agent", USER_AGENT)
+        .header("User-Agent", get_user_agent())
         .send()
         .await?;
     
@@ -175,7 +177,7 @@ pub async fn get_project_versions(
     
     let response = client
         .get(&url)
-        .header("User-Agent", USER_AGENT)
+        .header("User-Agent", get_user_agent())
         .send()
         .await?;
     
@@ -188,7 +190,7 @@ pub async fn get_version(version_id: &str) -> Result<ModrinthVersion, Box<dyn Er
     let _permit = MODRINTH_SEMAPHORE.acquire().await?;
     let client = reqwest::Client::new();
     let url = format!("{}/version/{}", MODRINTH_API_BASE, version_id);
-    let response = client.get(&url).header("User-Agent", USER_AGENT).send().await?;
+    let response = client.get(&url).header("User-Agent", get_user_agent()).send().await?;
     let version: ModrinthVersion = response.json().await?;
     Ok(version)
 }
@@ -210,7 +212,7 @@ pub async fn download_mod_file(
     
     let response = client
         .get(&file.url)
-        .header("User-Agent", USER_AGENT)
+        .header("User-Agent", get_user_agent())
         .send()
         .await?;
     
@@ -232,7 +234,7 @@ pub async fn get_project(project_id: &str) -> Result<ModrinthProject, Box<dyn Er
     
     let response = client
         .get(&url)
-        .header("User-Agent", USER_AGENT)
+        .header("User-Agent", get_user_agent())
         .send()
         .await?;
     
@@ -423,7 +425,7 @@ pub async fn install_modpack(
         let mut downloaded = false;
         for url in &mp_file.downloads {
             let client = reqwest::Client::new();
-            if let Ok(resp) = client.get(url).header("User-Agent", USER_AGENT).send().await {
+            if let Ok(resp) = client.get(url).header("User-Agent", get_user_agent()).send().await {
                 if let Ok(bytes) = resp.bytes().await {
                     if let Some(parent) = dest.parent() {
                         let _ = fs::create_dir_all(parent);
@@ -485,7 +487,6 @@ pub async fn install_modpack(
                     project_id: pid,
                     version_id,
                 };
-                let meta_path = dest.with_extension(format!("{}.meta.json", dest.extension().and_then(|e| e.to_str()).unwrap_or("jar")));
                 // Actually, our list_mods expects filename.meta.json
                 let meta_path = PathBuf::from(format!("{}.meta.json", dest.to_string_lossy()));
                 

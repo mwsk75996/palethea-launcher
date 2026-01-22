@@ -7,8 +7,6 @@ use std::fs;
 use std::sync::{Mutex, LazyLock};
 use std::time::{SystemTime, UNIX_EPOCH};
 use tauri::{State, AppHandle, Emitter};
-use tauri_plugin_shell::ShellExt;
-use tauri_plugin_opener::OpenerExt;
 
 // Global state for tracking running game processes
 static RUNNING_PROCESSES: LazyLock<Mutex<HashMap<String, u32>>> = LazyLock::new(|| Mutex::new(HashMap::new()));
@@ -2004,12 +2002,16 @@ pub fn run() {
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_opener::init())
         .setup(|app| {
-            let log_plugin = tauri_plugin_log::Builder::default()
-                .level(if cfg!(debug_assertions) { log::LevelFilter::Debug } else { log::LevelFilter::Info })
-                .level_for("reqwest", log::LevelFilter::Off)
-                .level_for("hyper", log::LevelFilter::Off)
-                .build();
-            app.handle().plugin(log_plugin)?;
+            let version = app.package_info().version.to_string();
+            minecraft::set_launcher_version(version);
+
+            app.handle().plugin(
+                tauri_plugin_log::Builder::default()
+                    .level(if cfg!(debug_assertions) { log::LevelFilter::Debug } else { log::LevelFilter::Info })
+                    .level_for("reqwest", log::LevelFilter::Off)
+                    .level_for("hyper", log::LevelFilter::Off)
+                    .build()
+            )?;
 
             if let Err(err) = downloader::ensure_instance_logos_dir() {
                 log::warn!("Failed to initialize instance logos folder: {}", err);

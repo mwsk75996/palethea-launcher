@@ -6,8 +6,6 @@ use std::process::Command;
 use crate::minecraft::instances::Instance;
 use crate::minecraft::launcher;
 
-const USER_AGENT: &str = "PaletheaLauncher/0.1.0";
-
 // ----------
 // Windows console hiding
 // Description: Hides CMD windows when running installers
@@ -58,7 +56,7 @@ pub async fn install_forge(
     
     // Download installer
     let client = reqwest::Client::builder()
-        .user_agent(USER_AGENT)
+        .user_agent(format!("PaletheaLauncher/{}", super::get_launcher_version()))
         .timeout(std::time::Duration::from_secs(300))
         .build()?;
 
@@ -241,7 +239,7 @@ pub async fn install_neoforge(
     let client = reqwest::Client::new();
     let response = client
         .get(&installer_url)
-        .header("User-Agent", USER_AGENT)
+        .header("User-Agent", format!("PaletheaLauncher/{}", super::get_launcher_version()))
         .send()
         .await?;
     

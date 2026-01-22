@@ -146,7 +146,7 @@ pub async fn download_file(
     
     // Download the file
     let client = reqwest::Client::builder()
-        .user_agent("PaletheaLauncher/0.2.9")
+        .user_agent(format!("PaletheaLauncher/{}", super::get_launcher_version()))
         .build()?;
         
     let response = client.get(url).send().await?;

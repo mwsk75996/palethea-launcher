@@ -6,11 +6,9 @@ use crate::minecraft::downloader::get_minecraft_dir;
 
 // Microsoft's public Xbox Live client ID (used by many third-party launchers)
 const MICROSOFT_CLIENT_ID: &str = "000000004C12AE6F";
-const USER_AGENT: &str = "PaletheaLauncher/0.2.9";
-
 fn create_client() -> reqwest::Client {
     reqwest::Client::builder()
-        .user_agent(USER_AGENT)
+        .user_agent(format!("PaletheaLauncher/{}", super::get_launcher_version()))
         .build()
         .unwrap_or_else(|_| reqwest::Client::new())
 }

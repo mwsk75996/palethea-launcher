@@ -659,7 +659,7 @@ fn deduplicate_jvm_args(args: Vec<String>) -> Vec<String> {
             // But wait, the classpath value is usually a separate string.
             // Our builder adds them as ["-cp", "path"].
             cp = Some(arg);
-        } else if let Some(last_cp) = &cp {
+        } else if let Some(_last_cp) = &cp {
             // This is the classpath value
             properties.insert("-cp_val".to_string(), arg);
             cp = None;

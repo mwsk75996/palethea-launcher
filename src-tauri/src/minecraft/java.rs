@@ -4,8 +4,6 @@ use std::path::PathBuf;
 
 use crate::minecraft::downloader::get_minecraft_dir;
 
-const USER_AGENT: &str = "PaletheaLauncher/0.1.0";
-
 pub async fn download_java(version: u32) -> Result<PathBuf, Box<dyn Error + Send + Sync>> {
     let os = if cfg!(target_os = "linux") {
         "linux"
@@ -33,7 +31,7 @@ pub async fn download_java(version: u32) -> Result<PathBuf, Box<dyn Error + Send
     let client = reqwest::Client::new();
     let response = client
         .get(&url)
-        .header("User-Agent", USER_AGENT)
+        .header("User-Agent", format!("PaletheaLauncher/{}", super::get_launcher_version()))
         .send()
         .await?;
 

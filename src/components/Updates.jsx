@@ -11,7 +11,7 @@ import './Updates.css';
 //              Supports switching between stable and prerelease update channels.
 // ----------
 function Updates() {
-  const [currentVersion, setCurrentVersion] = useState('0.1.2');
+  const [currentVersion, setCurrentVersion] = useState('');
   const [isPrerelease, setIsPrerelease] = useState(false);
   const [updateChannel, setUpdateChannel] = useState('stable');
   const [updateInfo, setUpdateInfo] = useState(() => {
@@ -41,6 +41,23 @@ function Updates() {
   const [downloadProgress, setDownloadProgress] = useState(0);
   const [error, setError] = useState(null);
   const [updateStatus, setUpdateStatus] = useState('idle'); // idle, downloading, ready, installing
+
+  // ----------
+  // Effect to load app version immediately
+  // ----------
+  useEffect(() => {
+    const fetchVersion = async () => {
+      try {
+        const version = await getVersion();
+        setCurrentVersion(version);
+        const isPre = await invoke('is_prerelease_version', { version });
+        setIsPrerelease(isPre);
+      } catch (err) {
+        console.error('Failed to get app version:', err);
+      }
+    };
+    fetchVersion();
+  }, []);
 
   // ----------
   // loadSettings

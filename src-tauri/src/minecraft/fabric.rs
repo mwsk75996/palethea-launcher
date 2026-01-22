@@ -8,7 +8,6 @@ use crate::minecraft::downloader::get_libraries_dir;
 use crate::minecraft::instances::Instance;
 
 const FABRIC_META_API: &str = "https://meta.fabricmc.net/v2";
-const USER_AGENT: &str = "PaletheaLauncher/0.1.0";
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct FabricLoaderVersion {
@@ -93,7 +92,7 @@ pub async fn get_fabric_loader_info(
 
     let response = client
         .get(&url)
-        .header("User-Agent", USER_AGENT)
+        .header("User-Agent", format!("PaletheaLauncher/{}", super::get_launcher_version()))
         .send()
         .await?;
 
@@ -167,7 +166,7 @@ async fn download_library_with_sha1(
     let client = reqwest::Client::new();
     let response = client
         .get(&url)
-        .header("User-Agent", USER_AGENT)
+        .header("User-Agent", format!("PaletheaLauncher/{}", super::get_launcher_version()))
         .send()
         .await?;
 

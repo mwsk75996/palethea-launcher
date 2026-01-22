@@ -187,7 +187,7 @@ function CreateInstance({ onClose, onCreate, isLoading, mode = 'page' }) {
 
   const canNextFromName = name.trim().length > 0;
   const canNextFromVersion = creationMode === 'version' ? !!selectedVersion : !!selectedModpack;
-  const canCreate = creationMode === 'version' 
+  const canCreate = creationMode === 'version'
     ? (name.trim() && selectedVersion && (modLoader === 'vanilla' || selectedLoaderVersion))
     : (name.trim() && selectedModpack && selectedModpackVersion);
 
@@ -231,7 +231,7 @@ function CreateInstance({ onClose, onCreate, isLoading, mode = 'page' }) {
             <div className="form-group">
               <label className="section-label">Installation Type</label>
               <div className="creation-mode-cards">
-                <button 
+                <button
                   className={`mode-card ${creationMode === 'version' ? 'active' : ''}`}
                   onClick={() => setCreationMode('version')}
                 >
@@ -247,7 +247,7 @@ function CreateInstance({ onClose, onCreate, isLoading, mode = 'page' }) {
                   </div>
                 </button>
 
-                <button 
+                <button
                   className={`mode-card ${creationMode === 'modpack' ? 'active' : ''}`}
                   onClick={() => setCreationMode('modpack')}
                 >
@@ -290,9 +290,9 @@ function CreateInstance({ onClose, onCreate, isLoading, mode = 'page' }) {
                   placeholder="Search Modrinth modpacks..."
                   className="modpack-search-input"
                 />
-                <button 
-                  className="btn btn-primary search-btn" 
-                  onClick={() => handleSearchModpacks()} 
+                <button
+                  className="btn btn-primary search-btn"
+                  onClick={() => handleSearchModpacks()}
                   disabled={modpacksLoading}
                 >
                   {modpacksLoading ? '...' : 'Search'}
@@ -308,8 +308,8 @@ function CreateInstance({ onClose, onCreate, isLoading, mode = 'page' }) {
               ) : (
                 <div className="modpack-grid">
                   {modpacks.map((mp) => (
-                    <div 
-                      key={mp.project_id} 
+                    <div
+                      key={mp.project_id}
                       className={`modpack-card ${selectedModpack?.project_id === mp.project_id ? 'selected' : ''}`}
                       onClick={() => handleSelectModpack(mp)}
                     >
@@ -365,7 +365,13 @@ function CreateInstance({ onClose, onCreate, isLoading, mode = 'page' }) {
                   <button
                     key={loader.id}
                     className={`loader-card ${modLoader === loader.id ? 'active' : ''}`}
-                    onClick={() => setModLoader(loader.id)}
+                    onClick={() => {
+                      // Reset version when switching loaders to avoid stale values
+                      if (loader.id !== modLoader) {
+                        setSelectedLoaderVersion('');
+                      }
+                      setModLoader(loader.id);
+                    }}
                   >
                     <div className="loader-icon">{loader.icon}</div>
                     <span className="loader-name">{loader.name}</span>
@@ -431,8 +437,8 @@ function CreateInstance({ onClose, onCreate, isLoading, mode = 'page' }) {
                   <div className="version-loading">Loading available versions...</div>
                 ) : (
                   modpackVersions.map(v => (
-                    <div 
-                      key={v.id} 
+                    <div
+                      key={v.id}
                       className={`review-version-item ${selectedModpackVersion?.id === v.id ? 'selected' : ''}`}
                       onClick={() => setSelectedModpackVersion(v)}
                     >

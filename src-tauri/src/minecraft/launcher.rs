@@ -9,6 +9,34 @@ use std::path::PathBuf;
 use std::process::Command;
 use zip::ZipArchive;
 
+// ----------
+// CommandExt trait for hiding console windows on Windows
+// Description: Adds hide_console() method to Command that sets CREATE_NO_WINDOW flag
+// ----------
+#[cfg(target_os = "windows")]
+use std::os::windows::process::CommandExt;
+
+#[cfg(target_os = "windows")]
+const CREATE_NO_WINDOW: u32 = 0x08000000;
+
+/// Extension trait to hide console window on Windows
+trait HideConsole {
+    fn hide_console(&mut self) -> &mut Self;
+}
+
+impl HideConsole for Command {
+    #[cfg(target_os = "windows")]
+    fn hide_console(&mut self) -> &mut Self {
+        self.creation_flags(CREATE_NO_WINDOW)
+    }
+    
+    #[cfg(not(target_os = "windows"))]
+    fn hide_console(&mut self) -> &mut Self {
+        self // No-op on non-Windows
+    }
+}
+
+
 /// Find Java installation
 pub fn find_java() -> Option<PathBuf> {
     // Check JAVA_HOME first
@@ -24,6 +52,7 @@ pub fn find_java() -> Option<PathBuf> {
     
     if let Ok(output) = Command::new(if cfg!(target_os = "windows") { "where" } else { "which" })
         .arg(java_name)
+        .hide_console()
         .output()
     {
         if output.status.success() {
@@ -75,6 +104,7 @@ pub fn find_java() -> Option<PathBuf> {
 fn get_java_major(java_path: &PathBuf) -> Option<u32> {
     let output = Command::new(java_path)
         .arg("-version")
+        .hide_console()
         .output()
         .ok()?;
 
@@ -928,9 +958,8 @@ pub async fn launch_game(
 
     #[cfg(target_os = "windows")]
     {
-        use std::os::windows::process::CommandExt;
-        // CREATE_NO_WINDOW is 0x08000000 - this prevents the Java console from appearing
-        command.creation_flags(0x08000000);
+        // Hide the Java console window
+        command.creation_flags(CREATE_NO_WINDOW);
 
         let total_len: usize = jvm_args.iter().map(|a| a.len() + 3).sum::<usize>() 
             + main_class.len() + 3

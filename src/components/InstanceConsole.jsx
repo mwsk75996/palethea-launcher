@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 
-function InstanceConsole({ instance, onInstanceUpdated, onShowNotification }) {
+function InstanceConsole({ instance, onInstanceUpdated, onShowNotification, clearOnMount }) {
   const [logs, setLogs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [autoScroll, setAutoScroll] = useState(true);
@@ -12,9 +12,16 @@ function InstanceConsole({ instance, onInstanceUpdated, onShowNotification }) {
     setAutoUpdate(instance.console_auto_update || false);
   }, [instance.console_auto_update]);
 
+  // ----------
+  // Clear logs on mount if requested
+  // Description: When launching, clears old logs instantly for a fresh start
+  // ----------
   useEffect(() => {
+    if (clearOnMount) {
+      setLogs([]);
+    }
     loadLogs(true);
-  }, [instance.id]);
+  }, [instance.id, clearOnMount]);
 
   useEffect(() => {
     if (!autoUpdate) return;
@@ -64,14 +71,15 @@ function InstanceConsole({ instance, onInstanceUpdated, onShowNotification }) {
 
   const handleOpenLogsFolder = async () => {
     try {
-      await invoke('open_instance_folder', { 
+      await invoke('open_instance_folder', {
         instanceId: instance.id,
         folderType: 'logs'
       });
     } catch (error) {
-      console.error('Failed to open folder:', error);      if (onShowNotification) {
+      console.error('Failed to open folder:', error); if (onShowNotification) {
         onShowNotification(`Failed to open logs folder: ${error}`, 'error');
-      }    }
+      }
+    }
   };
 
   const handleAutoUpdateChange = async (checked) => {
@@ -115,17 +123,17 @@ function InstanceConsole({ instance, onInstanceUpdated, onShowNotification }) {
         </button>
         <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '14px', color: 'var(--text-secondary)', fontSize: '14px' }}>
           <label style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <input 
-              type="checkbox" 
-              checked={autoUpdate} 
+            <input
+              type="checkbox"
+              checked={autoUpdate}
               onChange={(e) => handleAutoUpdateChange(e.target.checked)}
             />
             Auto-update
           </label>
           <label style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <input 
-              type="checkbox" 
-              checked={autoScroll} 
+            <input
+              type="checkbox"
+              checked={autoScroll}
               onChange={(e) => setAutoScroll(e.target.checked)}
             />
             Auto-scroll

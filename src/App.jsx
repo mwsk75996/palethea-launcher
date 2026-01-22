@@ -251,7 +251,7 @@ function App() {
     const unlistenProgress = listen('download-progress', (event) => {
       const { stage, percentage, total_bytes, downloaded_bytes } = event.payload;
       const displayPercentage = Number(percentage).toFixed(1);
-      
+
       setLogs(prev => [...prev.slice(-499), {
         id: Date.now() + Math.random(),
         level: 'info',
@@ -405,7 +405,7 @@ function App() {
     try {
       if (modLoader === 'modpack') {
         const { modpackId, versionId: modpackVersionId, modpackName, modpackIcon } = modLoaderVersion;
-        
+
         setLoadingStatus(`Creating instance for ${modpackName}...`);
         setLoadingProgress(5);
         // We use a placeholder version initially, modpack installer will update it
@@ -414,9 +414,9 @@ function App() {
         // Set the modpack icon if available
         if (modpackIcon) {
           try {
-            await invoke('set_instance_logo_from_url', { 
-              instanceId: newInstance.id, 
-              logoUrl: modpackIcon 
+            await invoke('set_instance_logo_from_url', {
+              instanceId: newInstance.id,
+              logoUrl: modpackIcon
             });
           } catch (iconError) {
             console.warn('Failed to set modpack icon:', iconError);
@@ -424,9 +424,9 @@ function App() {
         }
 
         setLoadingStatus(`Installing modpack ${modpackName}...`);
-        await invoke('install_modpack', { 
-          instanceId: newInstance.id, 
-          versionId: modpackVersionId 
+        await invoke('install_modpack', {
+          instanceId: newInstance.id,
+          versionId: modpackVersionId
         });
 
         // Now that modpack is installed, we have the real MC version.
@@ -447,72 +447,72 @@ function App() {
 
         // Install mod loader if not vanilla
         if (modLoader !== 'vanilla') {
-        setLoadingStatus(`Installing ${modLoader}...`);
-        setLoadingProgress(90);
+          setLoadingStatus(`Installing ${modLoader}...`);
+          setLoadingProgress(90);
 
-        if (modLoader === 'fabric') {
-          try {
-            const loaderVersions = modLoaderVersion ? [modLoaderVersion] : await invoke('get_loader_versions', {
-              loader: 'fabric',
-              gameVersion: versionId
-            });
-            const loaderVersion = modLoaderVersion || (loaderVersions && loaderVersions[0]);
-
-            if (loaderVersion) {
-              await invoke('install_fabric', {
-                instanceId: newInstance.id,
-                loaderVersion
+          if (modLoader === 'fabric') {
+            try {
+              const loaderVersions = modLoaderVersion ? [modLoaderVersion] : await invoke('get_loader_versions', {
+                loader: 'fabric',
+                gameVersion: versionId
               });
-            } else {
-              showNotification(`No Fabric version found for ${versionId}`, 'error');
-            }
-          } catch (fabricError) {
-            console.error('Failed to install Fabric:', fabricError);
-            showNotification(`Instance created but Fabric installation failed: ${fabricError}`, 'error');
-          }
-        } else if (modLoader === 'forge') {
-          try {
-            const loaderVersions = modLoaderVersion ? [modLoaderVersion] : await invoke('get_loader_versions', {
-              loader: 'forge',
-              gameVersion: versionId
-            });
-            const loaderVersion = modLoaderVersion || (loaderVersions && loaderVersions[0]);
+              const loaderVersion = modLoaderVersion || (loaderVersions && loaderVersions[0]);
 
-            if (loaderVersion) {
-              await invoke('install_forge', {
-                instanceId: newInstance.id,
-                loaderVersion
-              });
-            } else {
-              showNotification(`No Forge version found for ${versionId}`, 'error');
+              if (loaderVersion) {
+                await invoke('install_fabric', {
+                  instanceId: newInstance.id,
+                  loaderVersion
+                });
+              } else {
+                showNotification(`No Fabric version found for ${versionId}`, 'error');
+              }
+            } catch (fabricError) {
+              console.error('Failed to install Fabric:', fabricError);
+              showNotification(`Instance created but Fabric installation failed: ${fabricError}`, 'error');
             }
-          } catch (forgeError) {
-            console.error('Failed to install Forge:', forgeError);
-            showNotification(`Instance created but Forge installation failed: ${forgeError}`, 'error');
-          }
-        } else if (modLoader === 'neoforge') {
-          try {
-            const loaderVersions = modLoaderVersion ? [modLoaderVersion] : await invoke('get_loader_versions', {
-              loader: 'neoforge',
-              gameVersion: versionId
-            });
-            const loaderVersion = modLoaderVersion || (loaderVersions && loaderVersions[0]);
+          } else if (modLoader === 'forge') {
+            try {
+              const loaderVersions = modLoaderVersion ? [modLoaderVersion] : await invoke('get_loader_versions', {
+                loader: 'forge',
+                gameVersion: versionId
+              });
+              const loaderVersion = modLoaderVersion || (loaderVersions && loaderVersions[0]);
 
-            if (loaderVersion) {
-              await invoke('install_neoforge', {
-                instanceId: newInstance.id,
-                loaderVersion
-              });
-            } else {
-              showNotification(`No NeoForge version found for ${versionId}`, 'error');
+              if (loaderVersion) {
+                await invoke('install_forge', {
+                  instanceId: newInstance.id,
+                  loaderVersion
+                });
+              } else {
+                showNotification(`No Forge version found for ${versionId}`, 'error');
+              }
+            } catch (forgeError) {
+              console.error('Failed to install Forge:', forgeError);
+              showNotification(`Instance created but Forge installation failed: ${forgeError}`, 'error');
             }
-          } catch (neoforgeError) {
-            console.error('Failed to install NeoForge:', neoforgeError);
-            showNotification(`Instance created but NeoForge installation failed: ${neoforgeError}`, 'error');
+          } else if (modLoader === 'neoforge') {
+            try {
+              const loaderVersions = modLoaderVersion ? [modLoaderVersion] : await invoke('get_loader_versions', {
+                loader: 'neoforge',
+                gameVersion: versionId
+              });
+              const loaderVersion = modLoaderVersion || (loaderVersions && loaderVersions[0]);
+
+              if (loaderVersion) {
+                await invoke('install_neoforge', {
+                  instanceId: newInstance.id,
+                  loaderVersion
+                });
+              } else {
+                showNotification(`No NeoForge version found for ${versionId}`, 'error');
+              }
+            } catch (neoforgeError) {
+              console.error('Failed to install NeoForge:', neoforgeError);
+              showNotification(`Instance created but NeoForge installation failed: ${neoforgeError}`, 'error');
+            }
           }
         }
       }
-    }
 
       setLoadingProgress(100);
       await loadInstances();
@@ -559,6 +559,13 @@ function App() {
     }
     setIsLoading(true);
     try {
+      // Clear old logs first so the console doesn't show them
+      try {
+        await invoke('clear_instance_log', { instanceId });
+      } catch (logError) {
+        console.warn('Failed to clear log file:', logError);
+      }
+
       const result = await invoke('launch_instance', { instanceId });
       showNotification(result, 'success');
       loadRunningInstances(); // Update running instances immediately

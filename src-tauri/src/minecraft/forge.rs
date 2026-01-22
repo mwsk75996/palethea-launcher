@@ -8,6 +8,16 @@ use crate::minecraft::launcher;
 
 const USER_AGENT: &str = "PaletheaLauncher/0.1.0";
 
+// ----------
+// Windows console hiding
+// Description: Hides CMD windows when running installers
+// ----------
+#[cfg(target_os = "windows")]
+use std::os::windows::process::CommandExt;
+
+#[cfg(target_os = "windows")]
+const CREATE_NO_WINDOW: u32 = 0x08000000;
+
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct ForgeVersionInfo {
     pub forge_version: String,
@@ -99,6 +109,9 @@ pub async fn install_forge(
     let mut command = Command::new(&java_path);
     command.arg("-jar").arg(&installer_path);
     command.arg("--installClient").arg(&minecraft_dir);
+    
+    #[cfg(target_os = "windows")]
+    command.creation_flags(CREATE_NO_WINDOW);
     
     let output = command.output()
         .map_err(|e| format!("Failed to run Forge installer: {}", e))?;
@@ -253,14 +266,19 @@ pub async fn install_neoforge(
     
     // Run installer in client mode
     log::info!("Running NeoForge installer: {} --installClient {}", installer_path.display(), minecraft_dir.display());
-    let output = Command::new(&java_path)
-        .args(&[
-            "-jar", 
-            installer_path.to_str().ok_or("Invalid path")?, 
-            "--installClient", 
-            minecraft_dir.to_str().ok_or("Invalid path")?
-        ])
-        .output()
+    
+    let mut neoforge_cmd = Command::new(&java_path);
+    neoforge_cmd.args(&[
+        "-jar", 
+        installer_path.to_str().ok_or("Invalid path")?, 
+        "--installClient", 
+        minecraft_dir.to_str().ok_or("Invalid path")?
+    ]);
+    
+    #[cfg(target_os = "windows")]
+    neoforge_cmd.creation_flags(CREATE_NO_WINDOW);
+    
+    let output = neoforge_cmd.output()
         .map_err(|e| format!("Failed to run NeoForge installer: {}", e))?;
     
     if !output.status.success() {

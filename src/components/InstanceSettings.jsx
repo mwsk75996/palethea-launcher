@@ -349,6 +349,10 @@ function InstanceSettings({ instance, onSave, onInstanceUpdated, onShowConfirm, 
                       className={`loader-option ${modLoader === loader ? 'active' : ''}`}
                       onClick={() => {
                         setModLoader(loader);
+                        // Reset version when switching loaders to avoid showing wrong version
+                        if (loader !== modLoader) {
+                          setModLoaderVersion('');
+                        }
                         if (loader === 'Vanilla') {
                           setShowLoaderSelector(false);
                         }

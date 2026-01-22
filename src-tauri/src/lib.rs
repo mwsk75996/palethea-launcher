@@ -1482,6 +1482,12 @@ fn get_instance_log(instance_id: String) -> Result<String, String> {
 }
 
 #[tauri::command]
+fn clear_instance_log(instance_id: String) -> Result<(), String> {
+    let instance = instances::get_instance(&instance_id)?;
+    files::clear_latest_log(&instance)
+}
+
+#[tauri::command]
 fn get_instance_servers(instance_id: String) -> Result<Vec<files::Server>, String> {
     let instance = instances::get_instance(&instance_id)?;
     Ok(files::list_servers(&instance))
@@ -1775,6 +1781,7 @@ pub fn run() {
             rename_instance_screenshot,
             open_instance_screenshot,
             get_instance_log,
+            clear_instance_log,
             get_instance_servers,
             open_instance_folder,
             // Skin collection commands

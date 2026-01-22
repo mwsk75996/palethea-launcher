@@ -502,6 +502,18 @@ pub fn get_latest_log(instance: &Instance) -> Result<String, String> {
     Ok(lines[start..].join("\n"))
 }
 
+/// Truncate the latest log file (clear it)
+pub fn clear_latest_log(instance: &Instance) -> Result<(), String> {
+    let logs_dir = get_logs_dir(instance);
+    let latest_log = logs_dir.join("latest.log");
+    
+    if latest_log.exists() {
+        // Truncate the file to 0 bytes
+        fs::File::create(&latest_log).map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
 /// Read servers.dat NBT file
 pub fn list_servers(instance: &Instance) -> Vec<Server> {
     let servers_dat = instance.get_game_directory().join("servers.dat");

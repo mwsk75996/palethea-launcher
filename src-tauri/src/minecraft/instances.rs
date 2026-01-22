@@ -5,6 +5,16 @@ use uuid::Uuid;
 
 use crate::minecraft::downloader::{get_instances_dir, get_minecraft_dir};
 
+// ----------
+// Windows console hiding
+// Description: Constants and imports for hiding CMD windows on Windows
+// ----------
+#[cfg(target_os = "windows")]
+use std::os::windows::process::CommandExt;
+
+#[cfg(target_os = "windows")]
+const CREATE_NO_WINDOW: u32 = 0x08000000;
+
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 pub enum ModLoader {
     Vanilla,
@@ -335,7 +345,11 @@ pub fn is_process_running(pid: u32) -> bool {
     #[cfg(target_os = "windows")]
     {
         use std::process::Command;
-        if let Ok(out) = Command::new("tasklist").args(&["/FI", &format!("PID eq {}", pid)]).output() {
+        if let Ok(out) = Command::new("tasklist")
+            .args(&["/FI", &format!("PID eq {}", pid)])
+            .creation_flags(CREATE_NO_WINDOW)
+            .output() 
+        {
             let s = String::from_utf8_lossy(&out.stdout);
             return s.contains(&pid.to_string());
         }

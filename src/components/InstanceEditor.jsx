@@ -17,6 +17,11 @@ function InstanceEditor({ instanceId, onClose, onUpdate, onLaunch, onStop, runni
   const [loading, setLoading] = useState(true);
   const [confirmModal, setConfirmModal] = useState(null);
   const [launching, setLaunching] = useState(false);
+  // ----------
+  // Console clear key
+  // Description: Increments when launching to tell console to clear old logs immediately
+  // ----------
+  const [consoleClearKey, setConsoleClearKey] = useState(0);
 
   const isRunning = (runningInstances || []).includes(instanceId);
 
@@ -61,6 +66,7 @@ function InstanceEditor({ instanceId, onClose, onUpdate, onLaunch, onStop, runni
 
     if (onLaunch && instance) {
       setLaunching(true);
+      setConsoleClearKey(prev => prev + 1); // Trigger console clear
       setActiveTab('console');
       await onLaunch(instance.id);
       setLaunching(false);
@@ -94,17 +100,17 @@ function InstanceEditor({ instanceId, onClose, onUpdate, onLaunch, onStop, runni
     switch (activeTab) {
       case 'settings':
         return (
-          <InstanceSettings 
-            instance={instance} 
-            onSave={handleSave} 
-            onInstanceUpdated={handleInstanceUpdated} 
+          <InstanceSettings
+            instance={instance}
+            onSave={handleSave}
+            onInstanceUpdated={handleInstanceUpdated}
             onShowConfirm={handleShowConfirm}
             onDelete={onDelete}
             onShowNotification={onShowNotification}
           />
         );
       case 'console':
-        return <InstanceConsole instance={instance} onInstanceUpdated={setInstance} onShowNotification={onShowNotification} />;
+        return <InstanceConsole instance={instance} onInstanceUpdated={setInstance} onShowNotification={onShowNotification} clearOnMount={consoleClearKey} />;
       case 'mods':
         return <InstanceMods instance={instance} onShowConfirm={handleShowConfirm} onShowNotification={onShowNotification} />;
       case 'resources':

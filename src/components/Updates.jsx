@@ -467,86 +467,33 @@ function Updates() {
         <section className="updates-card updates-releases">
           <div className="updates-changelog-header">
             <h2>Available Versions</h2>
-            <span className="release-count">{allReleases.length} release{allReleases.length !== 1 ? 's' : ''}</span>
+            <span className="release-count">
+              {allReleases.filter(r => updateChannel === 'prerelease' ? r.prerelease : !r.prerelease).length} versions
+            </span>
           </div>
           <div className="updates-list">
-            {allReleases.slice(0, 5).map((release) => {
-              const verNum = release.tag_name.replace(/^v/, '');
-              return (
-                <article key={release.tag_name} className="update-item">
-                  <div>
-                    <p className="update-title">
-                      {release.name || release.tag_name}
-                      {release.prerelease && <span className="prerelease-badge-sm">Pre-release</span>}
-                    </p>
-                    <p className="update-meta">
-                      {release.tag_name} • {release.published_at ? new Date(release.published_at).toLocaleDateString('en-US', { month: 'long', year: 'numeric' }) : 'Unknown date'}
-                    </p>
-                  </div>
-                  <p className="update-body">
-                    {release.body
-                      ? release.body.split('\n').find(l => l.trim().startsWith('-') || l.trim().startsWith('*'))?.replace(/^[-*]\s*/, '').trim() || 'No description'
-                      : 'No description'}
-                  </p>
-                </article>
-              );
-            })}
+            {allReleases
+              .filter(release => updateChannel === 'prerelease' ? release.prerelease : !release.prerelease)
+              .slice(0, 5)
+              .map((release) => {
+                const verNum = release.tag_name.replace(/^v/, '');
+                return (
+                  <article key={release.tag_name} className="update-item">
+                    <div>
+                      <p className="update-title">
+                        {release.name || release.tag_name}
+                        {release.prerelease && <span className="prerelease-badge-sm">Pre-release</span>}
+                      </p>
+                      <p className="update-meta">
+                        {release.tag_name} • {release.published_at ? new Date(release.published_at).toLocaleDateString('en-US', { month: 'long', year: 'numeric' }) : 'Unknown date'}
+                      </p>
+                    </div>
+                  </article>
+                );
+              })}
           </div>
         </section>
       )}
-
-      <section className="updates-card updates-changelog">
-        <div className="updates-changelog-header">
-          <h2>Recent highlights</h2>
-        </div>
-        <div className="updates-list">
-          <article className="update-item">
-            <div>
-              <p className="update-title">Removed CMD popups</p>
-              <p className="update-meta">v0.2.11 • January 2026</p>
-            </div>
-            <p className="update-body">
-              Removed the annoying CMD popups when launching and downloading files.
-            </p>
-          </article>
-          <article className="update-item">
-            <div>
-              <p className="update-title">Fixed most issues launching mods</p>
-              <p className="update-meta">v0.2.9 • January 2026</p>
-            </div>
-            <p className="update-body">
-              Fixed a lot of issues happening on windows when trying to launch with mods.
-            </p>
-          </article>
-          <article className="update-item">
-            <div>
-              <p className="update-title">Improved Instance Editor & Welcome message</p>
-              <p className="update-meta">v0.2.1 • January 2026</p>
-            </div>
-            <p className="update-body">
-              A revamped instance editor with better mod management, version selection, and performance optimizations. Fixed the bug where the welcome message would not accept the toggleable switch.
-            </p>
-          </article>
-          <article className="update-item">
-            <div>
-              <p className="update-title">New and improved UI</p>
-              <p className="update-meta">v0.2.0 • January 2026</p>
-            </div>
-            <p className="update-body">
-              A cleaner, more focused interface with simplified navigation and informative welcome screen.
-            </p>
-          </article>
-          <article className="update-item">
-            <div>
-              <p className="update-title">Modrinth modpack support</p>
-              <p className="update-meta">v0.2.0 • January 2026</p>
-            </div>
-            <p className="update-body">
-              Now you can browse and install modpacks directly from Modrinth within the launcher.
-            </p>
-          </article>
-        </div>
-      </section>
     </div>
   );
 }

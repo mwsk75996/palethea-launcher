@@ -7,6 +7,17 @@
   gap: 24px;
 }
 
+.error-notice {
+  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid rgba(239, 68, 68, 0.2);
+  color: #f87171;
+  padding: 12px 16px;
+  border-radius: 8px;
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+}
+
 .updates-header {
   display: flex;
   justify-content: space-between;

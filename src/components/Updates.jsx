@@ -264,8 +264,11 @@ function Updates() {
 
     try {
       const update = await check();
+      
       if (!update) {
-        throw new Error('Update no longer available');
+        // Fallback: If Tauri's updater doesn't find it, it's usually because the 
+        // GitHub "latest.json" only points to stable versions.
+        throw new Error('Update manifest not found. This common with Pre-releases. Please download manually from GitHub.');
       }
 
       let downloaded = 0;
@@ -338,7 +341,21 @@ function Updates() {
         </div>
       </header>
 
-      {error && <div className="error-notice">{error}</div>}
+      {error && (
+        <div className="error-notice">
+          {error}
+          {error.includes('GitHub') && updateInfo?.htmlUrl && (
+            <a 
+              href={updateInfo.htmlUrl} 
+              target="_blank" 
+              rel="noreferrer" 
+              style={{ marginLeft: '10px', color: 'inherit', textDecoration: 'underline' }}
+            >
+              Go to Download Page
+            </a>
+          )}
+        </div>
+      )}
 
       <section className="updates-status-grid">
         <div className="updates-card updates-status">

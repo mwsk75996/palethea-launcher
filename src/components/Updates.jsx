@@ -3,6 +3,8 @@ import { getVersion } from '@tauri-apps/api/app';
 import { invoke } from '@tauri-apps/api/core';
 import { check } from '@tauri-apps/plugin-updater';
 import { relaunch } from '@tauri-apps/plugin-process';
+import { open } from '@tauri-apps/plugin-shell';
+import { ExternalLink } from 'lucide-react';
 import './Updates.css';
 
 // ----------
@@ -493,18 +495,24 @@ function Updates() {
               .filter(release => updateChannel === 'prerelease' ? release.prerelease : !release.prerelease)
               .slice(0, 5)
               .map((release) => {
-                const verNum = release.tag_name.replace(/^v/, '');
                 return (
                   <article key={release.tag_name} className="update-item">
-                    <div>
+                    <div className="update-item-info">
                       <p className="update-title">
                         {release.name || release.tag_name}
                         {release.prerelease && <span className="prerelease-badge-sm">Pre-release</span>}
                       </p>
                       <p className="update-meta">
-                        {release.tag_name} • {release.published_at ? new Date(release.published_at).toLocaleDateString('en-US', { month: 'long', year: 'numeric' }) : 'Unknown date'}
+                        {release.published_at ? new Date(release.published_at).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }) : 'Unknown date'}
                       </p>
                     </div>
+                    <button 
+                      className="btn-icon-link" 
+                      onClick={() => open(release.html_url)}
+                      title="View release on GitHub"
+                    >
+                      <ExternalLink size={16} />
+                    </button>
                   </article>
                 );
               })}

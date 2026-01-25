@@ -5,6 +5,13 @@ use std::path::PathBuf;
 use crate::minecraft::downloader::get_minecraft_dir;
 
 pub async fn download_java(version: u32) -> Result<PathBuf, Box<dyn Error + Send + Sync>> {
+    let install_dir = get_minecraft_dir().join("java").join(format!("temurin-{}", version));
+    
+    // Check if already installed
+    if let Some(binary) = find_java_binary(&install_dir) {
+        return Ok(binary);
+    }
+
     let os = if cfg!(target_os = "linux") {
         "linux"
     } else if cfg!(target_os = "windows") {

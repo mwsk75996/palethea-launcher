@@ -3,7 +3,7 @@ import { invoke, convertFileSrc } from '@tauri-apps/api/core';
 import ConfirmModal from './ConfirmModal';
 import './ScreenshotContextMenu.css';
 
-function InstanceScreenshots({ instance, onShowNotification }) {
+function InstanceScreenshots({ instance, onShowNotification, isScrolled }) {
   const [screenshots, setScreenshots] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedImage, setSelectedImage] = useState(null);
@@ -186,7 +186,7 @@ function InstanceScreenshots({ instance, onShowNotification }) {
 
   return (
     <div className="screenshots-tab">
-      <div className="console-actions">
+      <div className={`console-actions ${isScrolled ? 'scrolled' : ''}`}>
         <button className="open-btn" onClick={handleOpenFolder}>
           Open Screenshots Folder
         </button>

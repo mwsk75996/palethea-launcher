@@ -1,12 +1,24 @@
 import { useEffect, useState, useMemo } from 'react';
-import { Clock, Plus, Box } from 'lucide-react';
+import { Clock, Plus, Box, LayoutGrid, List } from 'lucide-react';
 import { invoke, convertFileSrc } from '@tauri-apps/api/core';
 import { join } from '@tauri-apps/api/path';
 import './InstanceList.css';
 
-function InstanceList({ instances, onLaunch, onStop, onDelete, onEdit, onCreate, onContextMenu, isLoading, runningInstances = [] }) {
+function InstanceList({ 
+  instances, 
+  onLaunch, 
+  onStop, 
+  onDelete, 
+  onEdit, 
+  onCreate, 
+  onContextMenu, 
+  isLoading, 
+  runningInstances = [], 
+  openEditors = [] 
+}) {
   const [logoMap, setLogoMap] = useState({});
   const [sortBy, setSortBy] = useState(localStorage.getItem('instance_sort') || 'name');
+  const [viewMode, setViewMode] = useState(localStorage.getItem('instance_view_mode') || 'list');
   const [scrolled, setScrolled] = useState(false);
 
   const handleScroll = (e) => {
@@ -104,8 +116,8 @@ function InstanceList({ instances, onLaunch, onStop, onDelete, onEdit, onCreate,
     <div className="instance-list" onScroll={handleScroll} onContextMenu={handleContainerContextMenu}>
       {instances.length > 0 && (
         <div className={`instance-header ${scrolled ? 'scrolled' : ''}`}>
-          <div className="header-left">
-            <h1>Instances</h1>
+          <h1>Instances</h1>
+          <div className="header-actions">
             <div className="sort-controls">
               <span className="sort-label">Sort by:</span>
               <select
@@ -121,11 +133,34 @@ function InstanceList({ instances, onLaunch, onStop, onDelete, onEdit, onCreate,
                 <option value="age">Creation Date</option>
                 <option value="playtime">Playtime</option>
               </select>
+
+              <div className="view-controls">
+                <button
+                  className={`view-btn ${viewMode === 'list' ? 'active' : ''}`}
+                  onClick={() => {
+                    setViewMode('list');
+                    localStorage.setItem('instance_view_mode', 'list');
+                  }}
+                  title="List View"
+                >
+                  <List size={18} />
+                </button>
+                <button
+                  className={`view-btn ${viewMode === 'grid' ? 'active' : ''}`}
+                  onClick={() => {
+                    setViewMode('grid');
+                    localStorage.setItem('instance_view_mode', 'grid');
+                  }}
+                  title="Grid View"
+                >
+                  <LayoutGrid size={18} />
+                </button>
+              </div>
             </div>
+            <button className="btn btn-primary" onClick={onCreate} disabled={isLoading}>
+              + New Instance
+            </button>
           </div>
-          <button className="btn btn-primary" onClick={onCreate} disabled={isLoading}>
-            + New Instance
-          </button>
         </div>
       )}
 
@@ -151,7 +186,7 @@ function InstanceList({ instances, onLaunch, onStop, onDelete, onEdit, onCreate,
           </div>
         </div>
       ) : (
-        <div className="instances-grid">
+        <div className={`instances-grid ${viewMode}`}>
           {sortedInstances.map((instance) => (
             <div
               key={instance.id}
@@ -163,35 +198,42 @@ function InstanceList({ instances, onLaunch, onStop, onDelete, onEdit, onCreate,
                 onContextMenu(e, instance);
               }}
             >
-              <div className="instance-logo">
-                {logoMap[instance.id] ? (
-                  <img
-                    src={logoMap[instance.id]}
-                    alt=""
-                    onError={(e) => {
-                      // If it's not already the fallback, try the fallback
-                      if (!e.target.src.endsWith('/minecraft_logo.png')) {
-                        e.target.src = '/minecraft_logo.png';
-                      } else {
-                        // If fallback also fails, hide it
-                        e.target.style.display = 'none';
-                        if (e.target.nextSibling) {
-                          e.target.nextSibling.style.display = 'block';
+              <div className="instance-logo-wrapper">
+                <div className="instance-logo">
+                  {logoMap[instance.id] ? (
+                    <img
+                      src={logoMap[instance.id]}
+                      alt=""
+                      onError={(e) => {
+                        // If it's not already the fallback, try the fallback
+                        if (!e.target.src.endsWith('/minecraft_logo.png')) {
+                          e.target.src = '/minecraft_logo.png';
+                        } else {
+                          // If fallback also fails, hide it
+                          e.target.style.display = 'none';
+                          if (e.target.nextSibling) {
+                            e.target.nextSibling.style.display = 'block';
+                          }
                         }
-                      }
-                    }}
+                      }}
+                    />
+                  ) : null}
+                  <div
+                    className="instance-logo-fallback"
+                    style={{ display: logoMap[instance.id] ? 'none' : 'block' }}
                   />
-                ) : null}
-                <div
-                  className="instance-logo-fallback"
-                  style={{ display: logoMap[instance.id] ? 'none' : 'block' }}
-                />
+                </div>
+                {instance.mod_loader && instance.mod_loader !== 'Vanilla' && (
+                  <span className={`instance-loader-badge ${(instance.mod_loader || '').toLowerCase().replace(' ', '-')}`}>
+                    {instance.mod_loader}
+                  </span>
+                )}
               </div>
               <div className="instance-info">
                 <div className="instance-title">
                   <h3 className="instance-name">{instance.name}</h3>
                   {instance.mod_loader && instance.mod_loader !== 'Vanilla' && (
-                    <span className="loader-inline">{instance.mod_loader}</span>
+                    <span className={`loader-inline ${(instance.mod_loader || '').toLowerCase().replace(' ', '-')}`}>{instance.mod_loader}</span>
                   )}
                 </div>
                 <div className="instance-meta">
@@ -230,9 +272,10 @@ function InstanceList({ instances, onLaunch, onStop, onDelete, onEdit, onCreate,
                 <button
                   className="btn btn-secondary"
                   onClick={() => onEdit(instance.id)}
-                  disabled={isLoading}
+                  disabled={isLoading || openEditors.includes(instance.id)}
+                  title={openEditors.includes(instance.id) ? "Editor already open" : "Edit instance"}
                 >
-                  Edit
+                  {openEditors.includes(instance.id) ? "Editing..." : "Edit"}
                 </button>
                 <button
                   className="delete-btn-standalone"

@@ -1,11 +1,11 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { Trash2, RefreshCcw, Plus, Upload } from 'lucide-react';
+import { Trash2, RefreshCcw, Plus, Upload, Loader2 } from 'lucide-react';
 import { open } from '@tauri-apps/plugin-dialog';
 import ConfirmModal from './ConfirmModal';
 import ModVersionModal from './ModVersionModal';
 
-function InstanceResources({ instance, onShowNotification }) {
+function InstanceResources({ instance, onShowNotification, isScrolled }) {
   const [activeSubTab, setActiveSubTab] = useState('resourcepacks');
   const [resourcePacks, setResourcePacks] = useState([]);
   const [shaderPacks, setShaderPacks] = useState([]);
@@ -18,8 +18,35 @@ function InstanceResources({ instance, onShowNotification }) {
   const [loading, setLoading] = useState(true);
   const [loadingPopular, setLoadingPopular] = useState(false);
   const [error, setError] = useState(null);
+  const [searchError, setSearchError] = useState(null);
   const [deleteConfirm, setDeleteConfirm] = useState({ show: false, item: null, type: null });
   const [versionModal, setVersionModal] = useState({ show: false, project: null, updateItem: null });
+
+  // Pagination states
+  const [popularOffset, setPopularOffset] = useState(0);
+  const [searchOffset, setSearchOffset] = useState(0);
+  const [hasMorePopular, setHasMorePopular] = useState(true);
+  const [hasMoreSearch, setHasMoreSearch] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const observer = useRef();
+
+  const lastElementRef = useCallback(node => {
+    if (loadingMore || searching || loadingPopular) return;
+    if (observer.current) observer.current.disconnect();
+    
+    observer.current = new IntersectionObserver(entries => {
+      if (entries[0].isIntersecting) {
+        const isSearch = searchQuery.trim().length > 0;
+        if (isSearch && hasMoreSearch) {
+          loadMoreSearch();
+        } else if (!isSearch && hasMorePopular) {
+          loadMorePopular();
+        }
+      }
+    });
+    
+    if (node) observer.current.observe(node);
+  }, [loadingMore, searching, loadingPopular, hasMoreSearch, hasMorePopular, searchQuery]);
 
   useEffect(() => {
     loadResources();
@@ -86,6 +113,10 @@ function InstanceResources({ instance, onShowNotification }) {
     setSearchResults([]);
     setSearchQuery('');
     setError(null);
+    setSearchError(null);
+    setSearchOffset(0);
+    setPopularOffset(0);
+    setHasMorePopular(true);
     try {
       const results = await invoke('search_modrinth', {
         query: '',
@@ -96,21 +127,51 @@ function InstanceResources({ instance, onShowNotification }) {
         offset: 0
       });
       setPopularItems(results?.hits || []);
+      setHasMorePopular((results.hits?.length || 0) === 20 && results.total_hits > 20);
+      setPopularOffset(results.hits?.length || 0);
     } catch (err) {
       console.error('Failed to load popular items:', err);
+      setSearchError(err.toString());
       setPopularItems([]);
     }
     setLoadingPopular(false);
   };
 
+  const loadMorePopular = async () => {
+    if (loadingMore || !hasMorePopular) return;
+    const projectType = activeSubTab === 'find-resourcepacks' ? 'resourcepack' : 'shader';
+    setLoadingMore(true);
+    try {
+      const results = await invoke('search_modrinth', {
+        query: '',
+        projectType: projectType,
+        gameVersion: instance.version_id,
+        loader: null,
+        limit: 20,
+        offset: popularOffset
+      });
+      const newHits = results.hits || [];
+      setPopularItems(prev => [...prev, ...newHits]);
+      setPopularOffset(prev => prev + newHits.length);
+      setHasMorePopular(newHits.length === 20 && (popularOffset + newHits.length) < results.total_hits);
+    } catch (error) {
+      console.error('Failed to load more popular items:', error);
+    }
+    setLoadingMore(false);
+  };
+
   const handleSearch = async () => {
     if (!searchQuery.trim()) {
       setSearchResults([]);
+      setSearchOffset(0);
+      setHasMoreSearch(false);
       return;
     }
 
     const projectType = activeSubTab === 'find-resourcepacks' ? 'resourcepack' : 'shader';
     setSearching(true);
+    setSearchOffset(0);
+    setHasMoreSearch(true);
     try {
       const results = await invoke('search_modrinth', {
         query: searchQuery,
@@ -121,10 +182,35 @@ function InstanceResources({ instance, onShowNotification }) {
         offset: 0
       });
       setSearchResults(results.hits || []);
+      setHasMoreSearch((results.hits?.length || 0) === 20 && results.total_hits > 20);
+      setSearchOffset(results.hits?.length || 0);
     } catch (error) {
       console.error('Failed to search:', error);
     }
     setSearching(false);
+  };
+
+  const loadMoreSearch = async () => {
+    if (loadingMore || !hasMoreSearch) return;
+    const projectType = activeSubTab === 'find-resourcepacks' ? 'resourcepack' : 'shader';
+    setLoadingMore(true);
+    try {
+      const results = await invoke('search_modrinth', {
+        query: searchQuery,
+        projectType: projectType,
+        gameVersion: instance.version_id,
+        loader: null,
+        limit: 20,
+        offset: searchOffset
+      });
+      const newHits = results.hits || [];
+      setSearchResults(prev => [...prev, ...newHits]);
+      setSearchOffset(prev => prev + newHits.length);
+      setHasMoreSearch(newHits.length === 20 && (searchOffset + newHits.length) < results.total_hits);
+    } catch (error) {
+      console.error('Failed to load more results:', error);
+    }
+    setLoadingMore(false);
   };
 
   const handleRequestInstall = async (project, updateItem = null) => {
@@ -170,6 +256,7 @@ function InstanceResources({ instance, onShowNotification }) {
         versionId: version.id,
         iconUrl: project.icon_url || project.thumbnail,
         name: project.title || project.name,
+        author: project.author,
         versionName: version.version_number
       });
 
@@ -301,7 +388,7 @@ function InstanceResources({ instance, onShowNotification }) {
 
   return (
     <div className="resources-tab">
-      <div className="sub-tabs-row">
+      <div className={`sub-tabs-row ${isScrolled ? 'scrolled' : ''}`}>
         <div className="sub-tabs">
           <button
             className={`sub-tab ${activeSubTab === 'resourcepacks' ? 'active' : ''}`}
@@ -592,18 +679,33 @@ function InstanceResources({ instance, onShowNotification }) {
 
           {(searching || loadingPopular) ? (
             <div className="loading-mods">Loading...</div>
+          ) : searchError ? (
+            <div className="empty-state error-state">
+              <p style={{ color: '#ef4444' }}>⚠️ Failed to fetch items</p>
+              <p style={{ fontSize: '12px', color: '#888', marginTop: '8px' }}>{searchError}</p>
+              <button 
+                onClick={() => searchQuery.trim() ? handleSearch() : loadPopularItems()}
+                style={{ marginTop: '12px', padding: '8px 16px', background: '#333', border: '1px solid #555', borderRadius: '6px', color: '#fff', cursor: 'pointer' }}
+              >
+                Retry
+              </button>
+            </div>
           ) : displayItems.length === 0 ? (
             <div className="empty-state">
-              <p>{searchQuery.trim() ? 'No results found.' : 'No popular items available for this version.'}</p>
+              <p>{searchQuery.trim() ? `No results for "${searchQuery}"` : 'No popular items available for this version.'}</p>
             </div>
           ) : (
             <div className="search-results">
-              {displayItems.map((project) => {
+              {displayItems.map((project, index) => {
                 const installedItem = getInstalledItem(project);
                 const isDownloading = installing === project.slug;
 
                 return (
-                  <div key={project.slug} className={`search-result-card ${isDownloading ? 'mod-updating' : ''}`}>
+                  <div 
+                    key={`${project.slug}-${index}`} 
+                    className={`search-result-card ${isDownloading ? 'mod-updating' : ''}`}
+                    ref={index === displayItems.length - 1 ? lastElementRef : null}
+                  >
                     {isDownloading && (
                       <div className="mod-updating-overlay">
                         <RefreshCcw className="spin-icon" size={20} />
@@ -644,8 +746,12 @@ function InstanceResources({ instance, onShowNotification }) {
                     </div>
                   </div>
                 );
-              })}
-            </div>
+              })}              {loadingMore && (
+                <div className="loading-more">
+                  <Loader2 className="spin-icon" size={24} />
+                  <span>Loading more items...</span>
+                </div>
+              )}            </div>
           )}
         </div>
       )}

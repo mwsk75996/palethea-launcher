@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { ArrowLeft, Play, Box, Cpu, FolderOpen, Square } from 'lucide-react';
+import { ArrowLeft, Play, Box, Cpu, FolderOpen, Square, X } from 'lucide-react';
 import './InstanceEditor.css';
 import InstanceSettings from './InstanceSettings';
 import InstanceMods from './InstanceMods';
@@ -17,6 +17,11 @@ function InstanceEditor({ instanceId, onClose, onUpdate, onLaunch, onStop, runni
   const [loading, setLoading] = useState(true);
   const [confirmModal, setConfirmModal] = useState(null);
   const [launching, setLaunching] = useState(false);
+  const [scrolled, setScrolled] = useState(false);
+
+  // Check if we are in popout mode
+  const isPopout = new URLSearchParams(window.location.search).get('popout') === 'editor';
+
   // ----------
   // Console clear key
   // Description: Increments when launching to tell console to clear old logs immediately
@@ -29,6 +34,24 @@ function InstanceEditor({ instanceId, onClose, onUpdate, onLaunch, onStop, runni
     loadInstance();
   }, [instanceId]);
 
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape') {
+        // If there's a modal open, let it handle escape (it usually does by unmounting)
+        // Otherwise close the editor
+        if (!confirmModal && onClose) {
+          onClose();
+        }
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [onClose, confirmModal]);
+
+  useEffect(() => {
+    setScrolled(false);
+  }, [activeTab]);
+
   const loadInstance = async () => {
     try {
       const result = await invoke('get_instance_details', { instanceId });
@@ -37,6 +60,10 @@ function InstanceEditor({ instanceId, onClose, onUpdate, onLaunch, onStop, runni
       console.error('Failed to load instance:', error);
     }
     setLoading(false);
+  };
+
+  const handleScroll = (e) => {
+    setScrolled(e.target.scrollTop > 10);
   };
 
   const handleSave = async (updatedInstance) => {
@@ -107,20 +134,21 @@ function InstanceEditor({ instanceId, onClose, onUpdate, onLaunch, onStop, runni
             onShowConfirm={handleShowConfirm}
             onDelete={onDelete}
             onShowNotification={onShowNotification}
+            isScrolled={scrolled}
           />
         );
       case 'console':
-        return <InstanceConsole instance={instance} onInstanceUpdated={setInstance} onShowNotification={onShowNotification} clearOnMount={consoleClearKey} />;
+        return <InstanceConsole instance={instance} onInstanceUpdated={setInstance} onShowNotification={onShowNotification} clearOnMount={consoleClearKey} isScrolled={scrolled} />;
       case 'mods':
-        return <InstanceMods instance={instance} onShowConfirm={handleShowConfirm} onShowNotification={onShowNotification} />;
+        return <InstanceMods instance={instance} onShowConfirm={handleShowConfirm} onShowNotification={onShowNotification} isScrolled={scrolled} />;
       case 'resources':
-        return <InstanceResources instance={instance} onShowNotification={onShowNotification} />;
+        return <InstanceResources instance={instance} onShowNotification={onShowNotification} isScrolled={scrolled} />;
       case 'worlds':
-        return <InstanceWorlds instance={instance} onShowNotification={onShowNotification} />;
+        return <InstanceWorlds instance={instance} onShowNotification={onShowNotification} isScrolled={scrolled} />;
       case 'servers':
-        return <InstanceServers instance={instance} onShowNotification={onShowNotification} />;
+        return <InstanceServers instance={instance} onShowNotification={onShowNotification} isScrolled={scrolled} />;
       case 'screenshots':
-        return <InstanceScreenshots instance={instance} onShowNotification={onShowNotification} />;
+        return <InstanceScreenshots instance={instance} onShowNotification={onShowNotification} isScrolled={scrolled} />;
       default:
         return null;
     }
@@ -146,9 +174,9 @@ function InstanceEditor({ instanceId, onClose, onUpdate, onLaunch, onStop, runni
     <div className="instance-editor">
       <div className="editor-header">
         <div className="header-left">
-          <button className="back-btn" onClick={onClose}>
-            <ArrowLeft size={18} />
-            <span>Back</span>
+          <button className={`back-btn ${isPopout ? 'popout-close-btn' : ''}`} onClick={onClose}>
+            {isPopout ? <X size={18} /> : <ArrowLeft size={18} />}
+            <span>{isPopout ? 'Close' : 'Back'}</span>
           </button>
           <button className="folder-btn" onClick={handleOpenFolder} title="Open Instance Folder">
             <FolderOpen size={18} />
@@ -205,7 +233,7 @@ function InstanceEditor({ instanceId, onClose, onUpdate, onLaunch, onStop, runni
         ))}
       </div>
 
-      <div className="editor-content">
+      <div className="editor-content" onScroll={handleScroll}>
         {renderTabContent()}
       </div>
 

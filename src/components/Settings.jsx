@@ -357,6 +357,7 @@ function Settings({ username, onSetUsername, isLoggedIn, onLogin, onLogout, laun
                 onChange={(e) => setJavaDownloadVersion(e.target.value)}
               >
                 <option value="8">Java 8 (Legacy)</option>
+                <option value="16">Java 16</option>
                 <option value="17">Java 17</option>
                 <option value="21">Java 21 (Recommended)</option>
               </select>
@@ -373,6 +374,9 @@ function Settings({ username, onSetUsername, isLoggedIn, onLogin, onLogout, laun
             )}
             <p className="setting-hint">
               Automatically download and set the selected Java version.
+            </p>
+            <p className="setting-hint" style={{ marginTop: '8px', color: 'var(--text-secondary)', fontSize: '11px', lineHeight: '1.4' }}>
+              <strong>Requirements:</strong> Java 21 for 1.20.5+ (including 1.21), Java 17 for 1.18–1.20.4, Java 16 for 1.17, and Java 8 for 1.16.5 and older.
             </p>
           </div>
 
@@ -572,6 +576,31 @@ function Settings({ username, onSetUsername, isLoggedIn, onLogin, onLogout, laun
             </div>
             <p className="setting-hint">
               Choose between a subtle static gradient or an animated atmospheric aura.
+            </p>
+          </div>
+
+          <div className="setting-item">
+            <div className="checkbox-row">
+              <label>Instance Editor Mode</label>
+              <select
+                value={launcherSettings?.edit_mode_preference || 'ask'}
+                onChange={async (e) => {
+                  const updated = {
+                    ...launcherSettings,
+                    edit_mode_preference: e.target.value
+                  };
+                  await invoke('save_settings', { newSettings: updated });
+                  onSettingsUpdated();
+                }}
+                className="setting-select"
+              >
+                <option value="ask">Always Ask</option>
+                <option value="in-place">Same Window</option>
+                <option value="pop-out">Pop-out Window</option>
+              </select>
+            </div>
+            <p className="setting-hint">
+              Choose how the instance editor should open.
             </p>
           </div>
 

@@ -1,11 +1,11 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { Trash2, RefreshCcw, Plus, Upload, FolderOpen } from 'lucide-react';
+import { Trash2, RefreshCcw, Plus, Upload, FolderOpen, Loader2 } from 'lucide-react';
 import { open } from '@tauri-apps/plugin-dialog';
 import ConfirmModal from './ConfirmModal';
 import ModVersionModal from './ModVersionModal';
 
-function WorldDatapacks({ instance, world, onShowNotification, onBack }) {
+function WorldDatapacks({ instance, world, onShowNotification, onBack, isScrolled }) {
     const [activeSubTab, setActiveSubTab] = useState('installed');
     const [searchQuery, setSearchQuery] = useState('');
     const [searchResults, setSearchResults] = useState([]);
@@ -18,6 +18,32 @@ function WorldDatapacks({ instance, world, onShowNotification, onBack }) {
     const [loading, setLoading] = useState(true);
     const [deleteConfirm, setDeleteConfirm] = useState({ show: false, datapack: null });
     const [versionModal, setVersionModal] = useState({ show: false, project: null, updateItem: null });
+
+    // Pagination states
+    const [popularOffset, setPopularOffset] = useState(0);
+    const [searchOffset, setSearchOffset] = useState(0);
+    const [hasMorePopular, setHasMorePopular] = useState(true);
+    const [hasMoreSearch, setHasMoreSearch] = useState(true);
+    const [loadingMore, setLoadingMore] = useState(false);
+    const observer = useRef();
+
+    const lastElementRef = useCallback(node => {
+        if (loadingMore || searching || loadingPopular) return;
+        if (observer.current) observer.current.disconnect();
+        
+        observer.current = new IntersectionObserver(entries => {
+            if (entries[0].isIntersecting) {
+                const isSearch = searchQuery.trim().length > 0;
+                if (isSearch && hasMoreSearch) {
+                    loadMoreSearch();
+                } else if (!isSearch && hasMorePopular) {
+                    loadMorePopular();
+                }
+            }
+        });
+        
+        if (node) observer.current.observe(node);
+    }, [loadingMore, searching, loadingPopular, hasMoreSearch, hasMorePopular, searchQuery]);
 
     useEffect(() => {
         loadInstalledDatapacks();
@@ -71,6 +97,8 @@ function WorldDatapacks({ instance, world, onShowNotification, onBack }) {
 
     const loadPopularDatapacks = async () => {
         setLoadingPopular(true);
+        setPopularOffset(0);
+        setHasMorePopular(true);
         try {
             const results = await invoke('search_modrinth', {
                 query: '',
@@ -81,19 +109,47 @@ function WorldDatapacks({ instance, world, onShowNotification, onBack }) {
                 offset: 0
             });
             setPopularDatapacks(results.hits || []);
+            setHasMorePopular((results.hits?.length || 0) === 20 && results.total_hits > 20);
+            setPopularOffset(results.hits?.length || 0);
         } catch (error) {
             console.error('Failed to load popular datapacks:', error);
         }
         setLoadingPopular(false);
     };
 
+    const loadMorePopular = async () => {
+        if (loadingMore || !hasMorePopular) return;
+        setLoadingMore(true);
+        try {
+            const results = await invoke('search_modrinth', {
+                query: '',
+                projectType: 'datapack',
+                gameVersion: instance.version_id,
+                loader: 'datapack',
+                limit: 20,
+                offset: popularOffset
+            });
+            const newHits = results.hits || [];
+            setPopularDatapacks(prev => [...prev, ...newHits]);
+            setPopularOffset(prev => prev + newHits.length);
+            setHasMorePopular(newHits.length === 20 && (popularOffset + newHits.length) < results.total_hits);
+        } catch (error) {
+            console.error('Failed to load more popular datapacks:', error);
+        }
+        setLoadingMore(false);
+    };
+
     const handleSearch = async () => {
         if (!searchQuery.trim()) {
             setSearchResults([]);
+            setSearchOffset(0);
+            setHasMoreSearch(false);
             return;
         }
 
         setSearching(true);
+        setSearchOffset(0);
+        setHasMoreSearch(true);
         try {
             // Modrinth uses 'project_type:datapack'
             const results = await invoke('search_modrinth', {
@@ -105,10 +161,34 @@ function WorldDatapacks({ instance, world, onShowNotification, onBack }) {
                 offset: 0
             });
             setSearchResults(results.hits || []);
+            setHasMoreSearch((results.hits?.length || 0) === 20 && results.total_hits > 20);
+            setSearchOffset(results.hits?.length || 0);
         } catch (error) {
             console.error('Failed to search Modrinth for datapacks:', error);
         }
         setSearching(false);
+    };
+
+    const loadMoreSearch = async () => {
+        if (loadingMore || !hasMoreSearch) return;
+        setLoadingMore(true);
+        try {
+            const results = await invoke('search_modrinth', {
+                query: searchQuery,
+                projectType: 'datapack',
+                gameVersion: instance.version_id,
+                loader: 'datapack',
+                limit: 20,
+                offset: searchOffset
+            });
+            const newHits = results.hits || [];
+            setSearchResults(prev => [...prev, ...newHits]);
+            setSearchOffset(prev => prev + newHits.length);
+            setHasMoreSearch(newHits.length === 20 && (searchOffset + newHits.length) < results.total_hits);
+        } catch (error) {
+            console.error('Failed to load more results:', error);
+        }
+        setLoadingMore(false);
     };
 
     const handleRequestInstall = (project, updateItem = null) => {
@@ -137,6 +217,7 @@ function WorldDatapacks({ instance, world, onShowNotification, onBack }) {
                 worldName: world.folder_name,
                 iconUrl: project.icon_url || project.thumbnail,
                 name: project.title || project.name,
+                author: project.author,
                 versionName: version.version_number
             });
 
@@ -234,7 +315,7 @@ function WorldDatapacks({ instance, world, onShowNotification, onBack }) {
                 </div>
             </div>
 
-            <div className="sub-tabs-row">
+            <div className={`sub-tabs-row ${isScrolled ? 'scrolled' : ''}`}>
                 <div className="sub-tabs">
                     <button
                         className={`sub-tab ${activeSubTab === 'installed' ? 'active' : ''}`}
@@ -402,18 +483,18 @@ function WorldDatapacks({ instance, world, onShowNotification, onBack }) {
 
                     {(searching || loadingPopular) ? (
                         <div className="loading-mods">Loading...</div>
-                    ) : (searchQuery.trim() ? searchResults : popularDatapacks).length === 0 ? (
-                        <div className="empty-state">
-                            <p>{searchQuery.trim() ? 'No datapacks found.' : 'No popular datapacks available for this version.'}</p>
-                        </div>
                     ) : (
                         <div className="search-results">
-                            {(searchQuery.trim() ? searchResults : popularDatapacks).map((project) => {
+                            {(searchQuery.trim() ? searchResults : popularDatapacks).map((project, index, array) => {
                                 const installedItem = getInstalledItem(project);
                                 const isDownloading = installing === project.slug;
 
                                 return (
-                                    <div key={project.project_id || project.slug} className={`search-result-card ${isDownloading ? 'mod-updating' : ''}`}>
+                                    <div 
+                                        key={`${project.project_id || project.slug}-${index}`} 
+                                        className={`search-result-card ${isDownloading ? 'mod-updating' : ''}`}
+                                        ref={index === array.length - 1 ? lastElementRef : null}
+                                    >
                                         {isDownloading && (
                                             <div className="mod-updating-overlay">
                                                 <RefreshCcw className="spin-icon" size={20} />
@@ -455,6 +536,17 @@ function WorldDatapacks({ instance, world, onShowNotification, onBack }) {
                                     </div>
                                 );
                             })}
+                            {(searchQuery.trim() ? searchResults : popularDatapacks).length === 0 && (
+                                <div className="empty-state">
+                                    <p>{searchQuery.trim() ? 'No datapacks found.' : 'No popular datapacks available for this version.'}</p>
+                                </div>
+                            )}
+                            {loadingMore && (
+                                <div className="loading-more">
+                                    <Loader2 className="spin-icon" size={24} />
+                                    <span>Loading more datapacks...</span>
+                                </div>
+                            )}
                         </div>
                     )}
                 </div>

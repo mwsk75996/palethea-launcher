@@ -4,8 +4,11 @@ use std::fs::{self, File};
 use std::io::{Read, Write};
 use std::path::PathBuf;
 use std::sync::LazyLock;
+use std::sync::{Arc, Mutex};
+use std::sync::atomic::{AtomicU64, AtomicU32, Ordering};
 use tokio::sync::Semaphore;
 use tauri::{AppHandle, Emitter};
+use futures::stream::{self, StreamExt};
 
 use crate::minecraft::downloader::DownloadProgress;
 use crate::minecraft::{instances, fabric, forge};
@@ -25,6 +28,8 @@ pub struct ModrinthProject {
     #[serde(default)]
     pub description: String,
     #[serde(default)]
+    pub body: String,
+    #[serde(default)]
     pub project_type: String,
     #[serde(default)]
     pub downloads: u64,
@@ -35,6 +40,89 @@ pub struct ModrinthProject {
     pub author: String,
     #[serde(default)]
     pub categories: Vec<String>,
+    #[serde(default)]
+    pub game_versions: Vec<String>,
+    #[serde(default)]
+    pub loaders: Vec<String>,
+    #[serde(default, deserialize_with = "deserialize_gallery")]
+    pub gallery: Vec<ModrinthGalleryImage>,
+}
+
+// Custom deserializer to handle gallery being either strings (search API) or objects (project API)
+fn deserialize_gallery<'de, D>(deserializer: D) -> Result<Vec<ModrinthGalleryImage>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    use serde::de::{self, SeqAccess, Visitor};
+    
+    struct GalleryVisitor;
+    
+    impl<'de> Visitor<'de> for GalleryVisitor {
+        type Value = Vec<ModrinthGalleryImage>;
+        
+        fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+            formatter.write_str("a sequence of strings or gallery image objects")
+        }
+        
+        fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error>
+        where
+            A: SeqAccess<'de>,
+        {
+            let mut images = Vec::new();
+            
+            while let Some(value) = seq.next_element::<serde_json::Value>()? {
+                match value {
+                    serde_json::Value::String(url) => {
+                        images.push(ModrinthGalleryImage {
+                            url: url.clone(),
+                            raw_url: Some(url),
+                            featured: false,
+                            title: None,
+                            description: None,
+                            created: String::new(),
+                        });
+                    }
+                    serde_json::Value::Object(_) => {
+                        if let Ok(img) = serde_json::from_value::<ModrinthGalleryImage>(value) {
+                            images.push(img);
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            
+            Ok(images)
+        }
+    }
+    
+    deserializer.deserialize_seq(GalleryVisitor)
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct ModrinthGalleryImage {
+    pub url: String,
+    #[serde(default)]
+    pub raw_url: Option<String>,
+    pub featured: bool,
+    pub title: Option<String>,
+    pub description: Option<String>,
+    pub created: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct ModrinthMember {
+    pub team_id: String,
+    pub user: ModrinthUser,
+    pub role: String,
+    pub accepted: bool,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct ModrinthUser {
+    pub id: String,
+    pub username: String,
+    pub name: Option<String>,
+    pub avatar_url: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -84,11 +172,11 @@ pub struct ModrinthDependency {
 #[derive(Debug, Deserialize)]
 pub struct ModpackIndex {
     #[serde(rename = "formatVersion")]
-    pub _format_version: u32,
-    pub _game: String,
+    pub format_version: u32,
+    pub game: String,
     #[serde(rename = "versionId")]
-    pub _version_id: String,
-    pub _name: String,
+    pub version_id: String,
+    pub name: String,
     pub dependencies: std::collections::HashMap<String, String>,
     pub files: Vec<ModpackFile>,
 }
@@ -96,8 +184,8 @@ pub struct ModpackIndex {
 #[derive(Debug, Deserialize)]
 pub struct ModpackFile {
     pub path: String,
-    pub _hashes: std::collections::HashMap<String, String>,
-    pub _env: Option<ModpackEnv>,
+    pub hashes: std::collections::HashMap<String, String>,
+    pub env: Option<ModpackEnv>,
     pub downloads: Vec<String>,
     #[serde(rename = "fileSize")]
     pub file_size: u64,
@@ -105,8 +193,8 @@ pub struct ModpackFile {
 
 #[derive(Debug, Deserialize)]
 pub struct ModpackEnv {
-    pub _client: String,
-    pub _server: String,
+    pub client: String,
+    pub server: String,
 }
 
 /// Search for projects on Modrinth
@@ -150,7 +238,15 @@ pub async fn search_projects(
         .send()
         .await?;
     
-    let result: ModrinthSearchResult = response.json().await?;
+    let status = response.status();
+    let body = response.text().await?;
+    
+    if !status.is_success() {
+        return Err(format!("Modrinth API error ({}): {}", status, body).into());
+    }
+    
+    let result: ModrinthSearchResult = serde_json::from_str(&body)
+        .map_err(|e| format!("Failed to parse Modrinth response: {}. Body preview: {}", e, &body[..body.len().min(500)]))?;
     Ok(result)
 }
 
@@ -199,10 +295,43 @@ pub async fn get_version(version_id: &str) -> Result<ModrinthVersion, Box<dyn Er
     Ok(version)
 }
 
-/// Download a file from Modrinth
+/// Get multiple versions at once
+pub async fn get_versions_bulk(version_ids: Vec<String>) -> Result<Vec<ModrinthVersion>, Box<dyn Error + Send + Sync>> {
+    if version_ids.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let mut all_versions = Vec::new();
+    let client = reqwest::Client::new();
+
+    // Modrinth allows bulk versions via /versions?ids=["id1","id2"]
+    // Chunk requests into groups of 50 to avoid URL length limits
+    for chunk in version_ids.chunks(50) {
+        let _permit = MODRINTH_SEMAPHORE.acquire().await?;
+        let ids_json = serde_json::to_string(chunk).unwrap();
+        let url = format!("{}/versions?ids={}", MODRINTH_API_BASE, urlencoding::encode(&ids_json));
+        
+        let response = client
+            .get(&url)
+            .header("User-Agent", get_user_agent())
+            .send()
+            .await?;
+        
+        if response.status().is_success() {
+            let mut versions: Vec<ModrinthVersion> = response.json().await?;
+            all_versions.append(&mut versions);
+        }
+    }
+    
+    Ok(all_versions)
+}
+
+/// Download a file from Modrinth with optional progress reporting
 pub async fn download_mod_file(
     file: &ModrinthFile,
     destination: &PathBuf,
+    app_handle: Option<&AppHandle>,
+    stage: Option<&str>,
 ) -> Result<(), Box<dyn Error + Send + Sync>> {
     // Acquire rate limit permit
     let _permit = MODRINTH_SEMAPHORE.acquire().await?;
@@ -219,10 +348,36 @@ pub async fn download_mod_file(
         .header("User-Agent", get_user_agent())
         .send()
         .await?;
-    
-    let bytes = response.bytes().await?;
+
+    let total_size = response.content_length().unwrap_or(file.size);
     let mut out_file = File::create(destination)?;
-    out_file.write_all(&bytes)?;
+    let mut downloaded: u64 = 0;
+    let mut last_emit = std::time::Instant::now();
+
+    let mut stream = response.bytes_stream();
+    use futures::StreamExt;
+
+    while let Some(item) = stream.next().await {
+        let chunk = item?;
+        out_file.write_all(&chunk)?;
+        downloaded += chunk.len() as u64;
+
+        // Emit progress every 100ms or so to avoid flooding
+        if let (Some(handle), Some(stage_name)) = (app_handle, stage) {
+            if last_emit.elapsed().as_millis() > 100 || downloaded == total_size {
+                let percentage = (downloaded as f32 / total_size as f32) * 100.0;
+                let _ = handle.emit("download-progress", crate::minecraft::downloader::DownloadProgress {
+                    stage: stage_name.to_string(),
+                    percentage: 10.0 + (percentage * 0.1), // Keep it within the 10-20% range for modpack file
+                    current: 5,
+                    total: 100,
+                    total_bytes: Some(total_size),
+                    downloaded_bytes: Some(downloaded),
+                });
+                last_emit = std::time::Instant::now();
+            }
+        }
+    }
     
     Ok(())
 }
@@ -249,14 +404,32 @@ pub async fn get_project(project_id: &str) -> Result<ModrinthProject, Box<dyn Er
         return Err(format!("Modrinth API error ({}): {}", status, body).into());
     }
 
-    match serde_json::from_str::<ModrinthProject>(&body) {
-        Ok(project) => Ok(project),
-        Err(e) => {
-            println!("Failed to decode Modrinth project JSON: {}", e);
-            println!("Body: {}", body);
-            Err(format!("Failed to decode project data: {}", e).into())
+    let mut project: ModrinthProject = serde_json::from_str(&body)?;
+    
+    // If author is missing (which it will be from the /project/ endpoint), fetch members
+    if project.author.is_empty() {
+        let members_url = format!("{}/project/{}/members", MODRINTH_API_BASE, project_id);
+        if let Ok(members_res) = client
+            .get(&members_url)
+            .header("User-Agent", get_user_agent())
+            .send()
+            .await 
+        {
+            if let Ok(members) = members_res.json::<Vec<ModrinthMember>>().await {
+                // Find owner or first member
+                let author_name = members.iter()
+                    .find(|m| m.role.to_lowercase() == "owner")
+                    .map(|m| m.user.username.clone())
+                    .or_else(|| members.first().map(|m| m.user.username.clone()));
+                
+                if let Some(name) = author_name {
+                    project.author = name;
+                }
+            }
         }
     }
+
+    Ok(project)
 }
 
 /// Get multiple projects at once
@@ -265,30 +438,54 @@ pub async fn get_projects(project_ids: Vec<String>) -> Result<Vec<ModrinthProjec
         return Ok(Vec::new());
     }
 
-    // Acquire rate limit permit
-    let _permit = MODRINTH_SEMAPHORE.acquire().await?;
-    
+    let mut all_projects = Vec::new();
     let client = reqwest::Client::new();
     
     // Modrinth allows bulk projects via /projects?ids=["id1","id2"]
-    let ids_json = serde_json::to_string(&project_ids).unwrap();
-    let url = format!("{}/projects?ids={}", MODRINTH_API_BASE, urlencoding::encode(&ids_json));
-    
-    let response = client
-        .get(&url)
-        .header("User-Agent", get_user_agent())
-        .send()
-        .await?;
-    
-    let status = response.status();
-    let body = response.text().await?;
-    
-    if !status.is_success() {
-        return Err(format!("Modrinth API error ({}): {}", status, body).into());
+    // Chunk requests into groups of 50 to avoid URL length limits
+    for chunk in project_ids.chunks(50) {
+        let _permit = MODRINTH_SEMAPHORE.acquire().await?;
+        let ids_json = serde_json::to_string(chunk).unwrap();
+        let url = format!("{}/projects?ids={}", MODRINTH_API_BASE, urlencoding::encode(&ids_json));
+        
+        let response = client
+            .get(&url)
+            .header("User-Agent", get_user_agent())
+            .send()
+            .await?;
+        
+        if response.status().is_success() {
+            let mut projects: Vec<ModrinthProject> = response.json().await?;
+            
+            // Fetch authors if missing (bulk response doesn't include them)
+            for project in &mut projects {
+                if project.author.is_empty() {
+                    let members_url = format!("{}/project/{}/members", MODRINTH_API_BASE, project.project_id);
+                    if let Ok(members_res) = client
+                        .get(&members_url)
+                        .header("User-Agent", get_user_agent())
+                        .send()
+                        .await 
+                    {
+                        if let Ok(members) = members_res.json::<Vec<ModrinthMember>>().await {
+                            let author_name = members.iter()
+                                .find(|m| m.role.to_lowercase() == "owner")
+                                .map(|m| m.user.username.clone())
+                                .or_else(|| members.first().map(|m| m.user.username.clone()));
+                            
+                            if let Some(name) = author_name {
+                                project.author = name;
+                            }
+                        }
+                    }
+                }
+            }
+            
+            all_projects.append(&mut projects);
+        }
     }
     
-    let projects: Vec<ModrinthProject> = serde_json::from_str(&body)?;
-    Ok(projects)
+    Ok(all_projects)
 }
 
 /// Calculate total download size for a modpack
@@ -306,7 +503,7 @@ pub async fn get_modpack_total_size(version_id: &str) -> Result<u64, Box<dyn Err
     let _ = fs::create_dir_all(&temp_dir);
     let mrpack_path = temp_dir.join(format!("{}.mrpack", version_id));
     
-    download_mod_file(primary_file, &mrpack_path).await?;
+    download_mod_file(primary_file, &mrpack_path, None, None).await?;
     
     // 3. Extract and parse index.json
     let index: ModpackIndex = {
@@ -352,14 +549,19 @@ pub async fn install_modpack(
     let mrpack_path = temp_dir.join("modpack.mrpack");
     
     let _ = app_handle.emit("download-progress", DownloadProgress { 
-        stage: "Downloading modpack file...".to_string(), 
+        stage: format!("Downloading modpack file: {}...", primary_file.filename), 
         percentage: 10.0,
         current: 5,
         total: 100,
         total_bytes: Some(modpack_size),
         downloaded_bytes: Some(0),
     });
-    download_mod_file(primary_file, &mrpack_path).await?;
+    download_mod_file(
+        primary_file, 
+        &mrpack_path, 
+        Some(app_handle), 
+        Some(&format!("Downloading modpack file: {}...", primary_file.filename))
+    ).await?;
     
     // 3. Extract and read index.json
     let _ = app_handle.emit("download-progress", DownloadProgress { 
@@ -454,97 +656,154 @@ pub async fn install_modpack(
         }
     }
     
-    // 5. Download mods
+    // 5. Download mods in parallel
     let total_files = index.files.len();
-    let mut downloaded_bytes = 0u64;
-    for (i, mp_file) in index.files.iter().enumerate() {
-        let progress = 30.0 + (i as f32 / total_files as f32) * 60.0;
-        let _ = app_handle.emit("download-progress", DownloadProgress { 
-            stage: format!("Downloading mod {}/{}...", i + 1, total_files), 
-            percentage: progress,
-            current: i as u32,
-            total: total_files as u32,
-            total_bytes: Some(total_mods_size),
-            downloaded_bytes: Some(downloaded_bytes),
-        });
-        
-        let dest = instance.get_game_directory().join(&mp_file.path);
-        
-        // Try each download URL
-        let mut downloaded = false;
-        for url in &mp_file.downloads {
-            let client = reqwest::Client::new();
-            if let Ok(resp) = client.get(url).header("User-Agent", get_user_agent()).send().await {
-                if let Ok(bytes) = resp.bytes().await {
-                    if let Some(parent) = dest.parent() {
-                        let _ = fs::create_dir_all(parent);
-                    }
-                    if let Ok(mut f) = File::create(&dest) {
-                        if f.write_all(&bytes).is_ok() {
-                            downloaded = true;
-                            downloaded_bytes += mp_file.file_size;
-                            break;
-                        }
-                    }
-                }
-            }
-        }
-        
-        if !downloaded {
-            crate::log_warn!(app_handle, "Failed to download file: {}", mp_file.path);
-        } else {
-            // Try to extract project and version IDs from the successful download URL for metadata
-            // Modrinth URLs patterns:
-            // 1. https://api.modrinth.com/v2/project/PID/version/VID/file/FILENAME
-            // 2. https://cdn.modrinth.com/data/PID/versions/VID/FILENAME
-            
-            let mut project_id = None;
-            let mut version_id = None;
-            
-            for url in &mp_file.downloads {
-                if url.contains("cdn.modrinth.com/data/") {
-                    let parts: Vec<&str> = url.split("/data/").collect();
-                    if parts.len() > 1 {
-                        let sub_parts: Vec<&str> = parts[1].split('/').collect();
-                        if sub_parts.len() >= 3 {
-                            project_id = Some(sub_parts[0].to_string());
-                            version_id = Some(sub_parts[2].to_string());
-                            break;
-                        }
-                    }
-                } else if url.contains("/project/") && url.contains("/version/") {
-                    // Try to parse api.modrinth.com style
-                    if let Some(p_idx) = url.find("/project/") {
-                        let after_p = &url[p_idx + 9..];
-                        if let Some(slash_idx) = after_p.find('/') {
-                            project_id = Some(after_p[..slash_idx].to_string());
-                            
-                            if let Some(v_idx) = url.find("/version/") {
-                                let after_v = &url[v_idx + 9..];
-                                if let Some(slash_idx_v) = after_v.find('/') {
-                                    version_id = Some(after_v[..slash_idx_v].to_string());
+    let downloaded_bytes_counter = Arc::new(AtomicU64::new(0));
+    let completed_count = Arc::new(AtomicU32::new(0));
+    let mods_metadata = Arc::new(Mutex::new(Vec::new()));
+    let game_dir = instance.get_game_directory();
+    let client = reqwest::Client::new();
+
+    stream::iter(index.files.into_iter())
+        .for_each_concurrent(15, |mp_file| {
+            let app_handle = app_handle.clone();
+            let downloaded_bytes_counter = downloaded_bytes_counter.clone();
+            let completed_count = completed_count.clone();
+            let mods_metadata = mods_metadata.clone();
+            let game_dir = game_dir.clone();
+            let total_mods_size = total_mods_size;
+            let client = client.clone();
+
+            async move {
+                let dest = game_dir.join(&mp_file.path);
+                
+                // Try each download URL
+                let mut downloaded = false;
+                for url in &mp_file.downloads {
+                    // Acquire rate limit permit
+                    let _permit = MODRINTH_SEMAPHORE.acquire().await.ok();
+                    
+                    if let Ok(resp) = client.get(url).header("User-Agent", get_user_agent()).send().await {
+                        if let Ok(bytes) = resp.bytes().await {
+                            if let Some(parent) = dest.parent() {
+                                let _ = fs::create_dir_all(parent);
+                            }
+                            if let Ok(mut f) = File::create(&dest) {
+                                if f.write_all(&bytes).is_ok() {
+                                    downloaded = true;
+                                    downloaded_bytes_counter.fetch_add(mp_file.file_size, Ordering::SeqCst);
+                                    break;
                                 }
                             }
-                            break;
                         }
                     }
                 }
-            }
-            
-            if let Some(pid) = project_id {
-                let meta = crate::minecraft::files::ModMeta {
-                    project_id: pid,
-                    version_id,
-                    name: None,
-                    icon_url: None,
-                    version_name: None,
-                };
-                // Actually, our list_mods expects filename.meta.json
-                let meta_path = PathBuf::from(format!("{}.meta.json", dest.to_string_lossy()));
                 
-                if let Ok(json) = serde_json::to_string(&meta) {
-                    let _ = std::fs::write(meta_path, json);
+                let current_completed = completed_count.fetch_add(1, Ordering::SeqCst) + 1;
+                let current_downloaded = downloaded_bytes_counter.load(Ordering::SeqCst);
+                
+                let progress = 30.0 + (current_completed as f32 / total_files as f32) * 60.0;
+                let _ = app_handle.emit("download-progress", DownloadProgress { 
+                    stage: format!("Downloading mod {}/{}...", current_completed, total_files), 
+                    percentage: progress,
+                    current: current_completed,
+                    total: total_files as u32,
+                    total_bytes: Some(total_mods_size),
+                    downloaded_bytes: Some(current_downloaded),
+                });
+
+                if !downloaded {
+                    crate::log_warn!(&app_handle, "Failed to download file: {}", mp_file.path);
+                } else {
+                    // Try to extract project and version IDs from the successful download URL for metadata
+                    let mut project_id = None;
+                    let mut version_id = None;
+                    
+                    for url in &mp_file.downloads {
+                        if url.contains("cdn.modrinth.com/data/") {
+                            let parts: Vec<&str> = url.split("/data/").collect();
+                            if parts.len() > 1 {
+                                let sub_parts: Vec<&str> = parts[1].split('/').collect();
+                                if sub_parts.len() >= 3 {
+                                    project_id = Some(sub_parts[0].to_string());
+                                    version_id = Some(sub_parts[2].to_string());
+                                    break;
+                                }
+                            }
+                        } else if url.contains("api.modrinth.com/v2/project/") {
+                             let parts: Vec<&str> = url.split("/project/").collect();
+                             if parts.len() > 1 {
+                                 let sub_parts: Vec<&str> = parts[1].split('/').collect();
+                                 if sub_parts.len() >= 3 && sub_parts[1] == "version" {
+                                     project_id = Some(sub_parts[0].to_string());
+                                     version_id = Some(sub_parts[2].to_string());
+                                     break;
+                                 }
+                             }
+                        } else if url.contains("/project/") && url.contains("/version/") {
+                            if let Some(p_idx) = url.find("/project/") {
+                                let after_p = &url[p_idx + 9..];
+                                if let Some(slash_idx) = after_p.find('/') {
+                                    project_id = Some(after_p[..slash_idx].to_string());
+                                    
+                                    if let Some(v_idx) = url.find("/version/") {
+                                        let after_v = &url[v_idx + 9..];
+                                        if let Some(slash_idx_v) = after_v.find('/') {
+                                            version_id = Some(after_v[..slash_idx_v].to_string());
+                                        }
+                                    }
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                    
+                    if let Some(pid) = project_id {
+                        let mut meta = mods_metadata.lock().unwrap();
+                        meta.push((dest, pid, version_id));
+                    }
                 }
+            }
+        })
+        .await;
+
+    // 6. Fetch and write metadata for all mods
+    let mods_metadata_vec = mods_metadata.lock().unwrap().clone();
+    if !mods_metadata_vec.is_empty() {
+        let _ = app_handle.emit("download-progress", DownloadProgress { 
+            stage: "Fetching mod metadata...".to_string(), 
+            percentage: 95.0,
+            current: total_files as u32,
+            total: total_files as u32,
+            total_bytes: Some(total_mods_size),
+            downloaded_bytes: Some(total_mods_size),
+        });
+
+        let mut unique_p_ids: Vec<String> = mods_metadata_vec.iter().map(|(_, p, _)| p.clone()).collect();
+        unique_p_ids.sort();
+        unique_p_ids.dedup();
+        
+        let v_ids: Vec<String> = mods_metadata_vec.iter().filter_map(|(_, _, v)| v.clone()).collect();
+
+        let projects = get_projects(unique_p_ids).await.unwrap_or_default();
+        let versions = get_versions_bulk(v_ids).await.unwrap_or_default();
+
+        for (dest, p_id, v_id) in mods_metadata_vec {
+            let project = projects.iter().find(|p| p.project_id == p_id);
+            let version = v_id.as_ref().and_then(|vid| versions.iter().find(|v| &v.id == vid));
+
+            let meta = crate::minecraft::files::ModMeta {
+                project_id: p_id,
+                version_id: v_id,
+                name: project.map(|p| p.title.clone()),
+                author: project.map(|p| p.author.clone()),
+                icon_url: project.and_then(|p| p.icon_url.clone()),
+                version_name: version.map(|v| v.version_number.clone()),
+            };
+
+            let meta_path = PathBuf::from(format!("{}.meta.json", dest.to_string_lossy()));
+            if let Ok(json) = serde_json::to_string(&meta) {
+                let _ = std::fs::write(meta_path, json);
             }
         }
     }

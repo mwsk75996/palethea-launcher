@@ -6,7 +6,7 @@ use std::collections::HashMap;
 use std::fs;
 use std::sync::{Mutex, LazyLock};
 use std::time::{SystemTime, UNIX_EPOCH};
-use tauri::{State, AppHandle, Emitter};
+use tauri::{State, AppHandle, Emitter, Manager};
 
 // Global state for tracking running game processes
 static RUNNING_PROCESSES: LazyLock<Mutex<HashMap<String, u32>>> = LazyLock::new(|| Mutex::new(HashMap::new()));
@@ -97,6 +97,11 @@ fn log_event(level: String, message: String, app_handle: AppHandle) {
 // ============== VERSION COMMANDS ==============
 
 #[tauri::command]
+async fn open_url(url: String) -> Result<(), String> {
+    open::that(url).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
 async fn get_versions() -> Result<Vec<VersionListItem>, String> {
     let manifest = versions::fetch_version_manifest()
         .await
@@ -152,10 +157,58 @@ fn update_instance(instance: instances::Instance, app_handle: AppHandle) -> Resu
 }
 
 #[tauri::command]
-fn clone_instance(instance_id: String, new_name: String, app_handle: AppHandle) -> Result<instances::Instance, String> {
-    let result = instances::clone_instance(&instance_id, new_name)?;
+async fn clone_instance(instance_id: String, new_name: String, app_handle: AppHandle) -> Result<instances::Instance, String> {
+    // 1. Load source instance
+    let source = instances::get_instance(&instance_id)?;
+    
+    // 2. Create new instance with same version
+    let mut cloned = instances::create_instance(new_name, source.version_id.clone())?;
+    
+    // 3. Copy settings from source to cloned
+    cloned.java_path = source.java_path.clone();
+    cloned.jvm_args = source.jvm_args.clone();
+    cloned.memory_min = source.memory_min;
+    cloned.memory_max = source.memory_max;
+    cloned.resolution_width = source.resolution_width;
+    cloned.resolution_height = source.resolution_height;
+    cloned.mod_loader = source.mod_loader.clone();
+    cloned.mod_loader_version = source.mod_loader_version.clone();
+    cloned.console_auto_update = source.console_auto_update;
+    cloned.logo_filename = source.logo_filename.clone();
+    cloned.color_accent = source.color_accent.clone();
+    
+    // Update the saved metadata
+    instances::update_instance(cloned.clone())?;
+    
+    // 4. Copy game directory with progress
+    let source_game_dir = source.get_game_directory();
+    let new_game_dir = cloned.get_game_directory();
+    
+    if source_game_dir.exists() {
+        let total_files = count_files_recursive(&source_game_dir);
+        let mut current_count = 0;
+        
+        // Initial progress event
+        let _ = app_handle.emit("download-progress", downloader::DownloadProgress {
+            stage: format!("Preparing to clone {} files...", total_files),
+            current: 0,
+            total: total_files,
+            percentage: 0.0,
+            total_bytes: None,
+            downloaded_bytes: None,
+        });
+
+        copy_dir_with_progress(
+            &source_game_dir, 
+            &new_game_dir, 
+            &app_handle, 
+            total_files, 
+            &mut current_count
+        )?;
+    }
+    
     let _ = app_handle.emit("refresh-instances", ());
-    Ok(result)
+    Ok(cloned)
 }
 
 #[tauri::command]
@@ -261,9 +314,80 @@ fn clear_instance_logo(instance_id: String) -> Result<instances::Instance, Strin
 // Description: Exports an instance as a .zip file for sharing with others.
 //              Includes the instance metadata and all game files (mods, configs, worlds, etc.)
 // ----------
+fn count_files_recursive(dir: &std::path::Path) -> u32 {
+    let mut count = 0;
+    if let Ok(entries) = fs::read_dir(dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                count += count_files_recursive(&path);
+            } else {
+                count += 1;
+            }
+        }
+    }
+    count
+}
+
+fn copy_dir_with_progress(
+    src: &std::path::Path,
+    dst: &std::path::Path,
+    app_handle: &AppHandle,
+    total_files: u32,
+    current_count: &mut u32,
+) -> Result<(), String> {
+    fs::create_dir_all(dst).map_err(|e| e.to_string())?;
+
+    for entry in fs::read_dir(src).map_err(|e| e.to_string())? {
+        let entry = entry.map_err(|e| e.to_string())?;
+        let file_type = entry.file_type().map_err(|e| e.to_string())?;
+        let src_path = entry.path();
+        let dst_path = dst.join(entry.file_name());
+
+        if file_type.is_dir() {
+            copy_dir_with_progress(&src_path, &dst_path, app_handle, total_files, current_count)?;
+        } else {
+            *current_count += 1;
+            let file_name = entry.file_name().to_string_lossy().to_string();
+            let percentage = if total_files > 0 { (*current_count as f32 / total_files as f32) * 100.0 } else { 100.0 };
+
+            if *current_count % 50 == 0 || *current_count == total_files {
+                let _ = app_handle.emit("download-progress", downloader::DownloadProgress {
+                    stage: format!("Cloning: {} ({}/{})", file_name, current_count, total_files),
+                    current: *current_count,
+                    total: total_files,
+                    percentage,
+                    total_bytes: None,
+                    downloaded_bytes: None,
+                });
+            }
+
+            if file_type.is_symlink() {
+                let target = fs::read_link(&src_path).map_err(|e| e.to_string())?;
+                #[cfg(unix)]
+                {
+                    use std::os::unix::fs::symlink;
+                    let _ = symlink(&target, &dst_path);
+                }
+                #[cfg(windows)]
+                {
+                    if target.is_dir() {
+                        let _ = std::os::windows::fs::symlink_dir(&target, &dst_path);
+                    } else {
+                        let _ = std::os::windows::fs::symlink_file(&target, &dst_path);
+                    }
+                }
+            } else {
+                fs::copy(&src_path, &dst_path).map_err(|e| e.to_string())?;
+            }
+        }
+    }
+    Ok(())
+}
+
 #[tauri::command]
 async fn export_instance_zip(instance_id: String, destination_path: String, app_handle: AppHandle) -> Result<String, String> {
-    use std::io::{Read, Write};
+    use std::io::Write;
     use zip::write::SimpleFileOptions;
     
     logger::emit_log(&app_handle, "info", &format!("Exporting instance {} to {}", instance_id, destination_path));
@@ -274,6 +398,18 @@ async fn export_instance_zip(instance_id: String, destination_path: String, app_
     if !game_dir.exists() {
         return Err("Instance game directory not found".to_string());
     }
+
+    let _ = app_handle.emit("download-progress", downloader::DownloadProgress {
+        stage: "Counting files...".to_string(),
+        current: 0,
+        total: 0,
+        percentage: 0.0,
+        total_bytes: None,
+        downloaded_bytes: None,
+    });
+
+    let total_files = count_files_recursive(&game_dir);
+    let mut current_count = 0;
     
     // Create the zip file
     let zip_path = std::path::PathBuf::from(&destination_path);
@@ -315,6 +451,9 @@ async fn export_instance_zip(instance_id: String, destination_path: String, app_
         base_path: &std::path::Path,
         current_path: &std::path::Path,
         options: SimpleFileOptions,
+        app_handle: &AppHandle,
+        total_files: u32,
+        current_count: &mut u32,
     ) -> Result<(), String> {
         for entry in fs::read_dir(current_path).map_err(|e| e.to_string())? {
             let entry = entry.map_err(|e| e.to_string())?;
@@ -325,26 +464,65 @@ async fn export_instance_zip(instance_id: String, destination_path: String, app_
             if path.is_dir() {
                 zip.add_directory(&name, options)
                     .map_err(|e| format!("Failed to add directory {}: {}", name, e))?;
-                add_dir_to_zip(zip, base_path, &path, options)?;
+                add_dir_to_zip(zip, base_path, &path, options, app_handle, total_files, current_count)?;
             } else {
+                *current_count += 1;
+                let file_name = path.file_name().unwrap_or_default().to_string_lossy();
+                let percentage = (*current_count as f32 / total_files as f32) * 100.0;
+                
+                // Only emit every 50 files or so to avoid overwhelming the frontend
+                if *current_count % 50 == 0 || *current_count == total_files {
+                    let _ = app_handle.emit("download-progress", downloader::DownloadProgress {
+                        stage: format!("Zipping: {} ({}/{})", file_name, current_count, total_files),
+                        current: *current_count,
+                        total: total_files,
+                        percentage,
+                        total_bytes: None,
+                        downloaded_bytes: None,
+                    });
+                }
+
                 zip.start_file(&name, options)
                     .map_err(|e| format!("Failed to start file {}: {}", name, e))?;
                 let mut file = fs::File::open(&path).map_err(|e| e.to_string())?;
-                let mut buffer = Vec::new();
-                file.read_to_end(&mut buffer).map_err(|e| e.to_string())?;
-                zip.write_all(&buffer).map_err(|e| e.to_string())?;
+                std::io::copy(&mut file, zip).map_err(|e| e.to_string())?;
             }
         }
         Ok(())
     }
     
-    add_dir_to_zip(&mut zip, &game_dir, &game_dir, options)?;
+    add_dir_to_zip(&mut zip, &game_dir, &game_dir, options, &app_handle, total_files, &mut current_count)?;
     
     zip.finish().map_err(|e| format!("Failed to finalize zip: {}", e))?;
     
     logger::emit_log(&app_handle, "info", &format!("Successfully exported instance to {}", destination_path));
     
     Ok(destination_path)
+}
+
+// ----------
+// peek_instance_zip
+// Description: Peeks into a zip file to see if it's a valid Palethea instance export
+//              and returns the metadata if it is.
+// ----------
+#[tauri::command]
+async fn peek_instance_zip(zip_path: String) -> Result<serde_json::Value, String> {
+    use std::io::Read;
+    
+    let zip_file = fs::File::open(&zip_path)
+        .map_err(|e| format!("Failed to open zip file: {}", e))?;
+    let mut archive = zip::ZipArchive::new(zip_file)
+        .map_err(|e| format!("Failed to read zip archive: {}", e))?;
+    
+    let mut metadata_file = archive.by_name("palethea_instance.json")
+        .map_err(|_| "This doesn't appear to be a valid Palethea instance export (missing palethea_instance.json)")?;
+    let mut contents = String::new();
+    metadata_file.read_to_string(&mut contents)
+        .map_err(|e| format!("Failed to read metadata: {}", e))?;
+    let metadata: serde_json::Value = serde_json::from_str(&contents)
+        .map_err(|e| format!("Failed to parse metadata: {}", e))?;
+        
+    Ok(metadata)
 }
 
 // ----------
@@ -425,13 +603,32 @@ async fn import_instance_zip(zip_path: String, custom_name: Option<String>, app_
     let mut archive = zip::ZipArchive::new(zip_file)
         .map_err(|e| format!("Failed to read zip archive: {}", e))?;
     
+    let total_files = archive.len() as u32;
+    let mut current_count = 0;
+
     for i in 0..archive.len() {
         let mut file = archive.by_index(i).map_err(|e| e.to_string())?;
         let name = file.name().to_string();
+
+        current_count += 1;
         
         // Skip the metadata file
         if name == "palethea_instance.json" {
             continue;
+        }
+
+        let percentage = (current_count as f32 / total_files as f32) * 100.0;
+        let file_name = std::path::Path::new(&name).file_name().unwrap_or_default().to_string_lossy().to_string();
+
+        if current_count % 50 == 0 || current_count == total_files {
+            let _ = app_handle.emit("download-progress", downloader::DownloadProgress {
+                stage: format!("Extracting: {} ({}/{})", file_name, current_count, total_files),
+                current: current_count,
+                total: total_files,
+                percentage,
+                total_bytes: None,
+                downloaded_bytes: None,
+            });
         }
         
         // Extract files that are in the minecraft/ directory
@@ -941,6 +1138,13 @@ async fn download_java_global(version: u32) -> Result<String, String> {
         .await
         .map_err(|e| e.to_string())?;
     Ok(java_path.to_string_lossy().to_string())
+}
+
+#[tauri::command]
+async fn is_java_version_installed(version: u32) -> Result<bool, String> {
+    let mc_dir = minecraft::downloader::get_minecraft_dir();
+    let install_dir = mc_dir.join("java").join(format!("temurin-{}", version));
+    Ok(install_dir.exists())
 }
 
 // ----------
@@ -1895,6 +2099,7 @@ async fn get_modrinth_version(
 
 #[tauri::command]
 async fn install_modrinth_file(
+    app_handle: AppHandle,
     instance_id: String,
     file_url: String,
     filename: String,
@@ -1903,6 +2108,7 @@ async fn install_modrinth_file(
     version_id: Option<String>,
     world_name: Option<String>,
     name: Option<String>,
+    author: Option<String>,
     icon_url: Option<String>,
     version_name: Option<String>,
 ) -> Result<(), String> {
@@ -1924,7 +2130,7 @@ async fn install_modrinth_file(
     
     let dest_path = dest_dir.join(&filename);
     
-    // Download the file
+    // Download the file with progress
     let client = reqwest::Client::new();
     let response = client
         .get(&file_url)
@@ -1935,13 +2141,38 @@ async fn install_modrinth_file(
         .error_for_status()
         .map_err(|e| format!("HTTP error: {}", e))?;
     
-    let bytes = response.bytes().await.map_err(|e| format!("Failed to read response bytes: {}", e))?;
+    let total_size = response.content_length();
     
     if let Some(parent) = dest_path.parent() {
         std::fs::create_dir_all(parent).map_err(|e| format!("Failed to create directory: {}", e))?;
     }
     
-    std::fs::write(&dest_path, bytes).map_err(|e| format!("Failed to write file: {}", e))?;
+    let mut file = std::fs::File::create(&dest_path).map_err(|e| format!("Failed to create file: {}", e))?;
+    let mut downloaded: u64 = 0;
+    let mut last_emit = std::time::Instant::now();
+    
+    let mut stream = response.bytes_stream();
+    use futures::StreamExt;
+    
+    while let Some(item) = stream.next().await {
+        let chunk = item.map_err(|e| format!("Download error: {}", e))?;
+        std::io::Write::write_all(&mut file, &chunk).map_err(|e| format!("Write error: {}", e))?;
+        downloaded += chunk.len() as u64;
+        
+        // Emit progress every 100ms or so
+        if last_emit.elapsed().as_millis() > 100 || total_size.map_or(false, |ts| downloaded == ts) {
+            let percentage = total_size.map_or(0.0, |ts| (downloaded as f32 / ts as f32) * 100.0);
+            let _ = app_handle.emit("download-progress", downloader::DownloadProgress {
+                stage: format!("Downloading {}...", name.as_ref().unwrap_or(&filename)),
+                percentage,
+                current: 1,
+                total: 1,
+                total_bytes: total_size,
+                downloaded_bytes: Some(downloaded),
+            });
+            last_emit = std::time::Instant::now();
+        }
+    }
     
     // Save metadata with project_id if provided
     if let Some(pid) = project_id {
@@ -1949,6 +2180,7 @@ async fn install_modrinth_file(
             project_id: pid,
             version_id,
             name,
+            author,
             icon_url,
             version_name,
         };
@@ -1957,6 +2189,34 @@ async fn install_modrinth_file(
             let _ = std::fs::write(meta_path, json);
         }
     }
+    
+    Ok(())
+}
+
+#[tauri::command]
+async fn save_remote_file(url: String, path: String) -> Result<(), String> {
+    let dest_path = std::path::PathBuf::from(path);
+    
+    // Create parent directories if they don't exist
+    if let Some(parent) = dest_path.parent() {
+        std::fs::create_dir_all(parent).map_err(|e| format!("Failed to create directory: {}", e))?;
+    }
+
+    let client = reqwest::Client::new();
+    let response = client
+        .get(&url)
+        .header("User-Agent", format!("PaletheaLauncher/{}", minecraft::get_launcher_version()))
+        .send()
+        .await
+        .map_err(|e| format!("Request failed: {}", e))?;
+    
+    if !response.status().is_success() {
+        return Err(format!("HTTP error: {}", response.status()));
+    }
+
+    let mut file = std::fs::File::create(&dest_path).map_err(|e| format!("Failed to create file: {}", e))?;
+    let content = response.bytes().await.map_err(|e| format!("Failed to read body: {}", e))?;
+    std::io::Write::write_all(&mut file, &content).map_err(|e| format!("Write error: {}", e))?;
     
     Ok(())
 }
@@ -2358,6 +2618,13 @@ pub fn run() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
         .plugin(tauri_plugin_opener::init())
+        .on_window_event(|window, event| {
+            if let tauri::WindowEvent::CloseRequested { .. } = event {
+                if window.label() == "main" {
+                    window.app_handle().exit(0);
+                }
+            }
+        })
         .setup(|app| {
             let version = app.package_info().version.to_string();
             minecraft::set_launcher_version(version);
@@ -2425,6 +2692,7 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            open_url,
             // Version commands
             get_versions,
             get_latest_release,
@@ -2440,6 +2708,7 @@ pub fn run() {
             clear_instance_logo,
             export_instance_zip,
             import_instance_zip,
+            peek_instance_zip,
             // Download commands
             download_version,
             is_version_downloaded,
@@ -2455,6 +2724,7 @@ pub fn run() {
             save_settings,
             download_java_for_instance,
             download_java_global,
+            is_java_version_installed,
             // Update/version comparison commands
             get_github_releases,
             compare_versions,
@@ -2497,6 +2767,7 @@ pub fn run() {
             get_modpack_total_size,
             install_modpack,
             install_modrinth_file,
+            save_remote_file,
             // File management commands
             get_instance_mods,
             toggle_instance_mod,

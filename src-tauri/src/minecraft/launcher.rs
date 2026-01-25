@@ -236,9 +236,19 @@ fn find_java_by_version(required_major: u32) -> Option<PathBuf> {
         }
     }
     
-    // Then find any version >= required
+    // If not found, and we need 17, try to find 18, 19, 20 before jumping to 21+
+    // Some mods are very sensitive to Java 21's new memory management
+    for v in (required_major + 1)..=21 {
+        for (path, major) in &candidates {
+            if *major == v {
+                return Some(path.clone());
+            }
+        }
+    }
+
+    // Then find any version > required
     for (path, major) in &candidates {
-        if *major >= required_major {
+        if *major > required_major {
             return Some(path.clone());
         }
     }
@@ -591,9 +601,17 @@ pub fn build_jvm_args(
 
     // Memory settings
     let min_mem = instance.memory_min.unwrap_or(512);
-    let max_mem = instance.memory_max.unwrap_or(2048);
+    let max_mem = instance.memory_max.unwrap_or(4096);
     args.push(format!("-Xms{}M", min_mem));
     args.push(format!("-Xmx{}M", max_mem));
+
+    // Default performance optimizations (G1GC is standard for modpacks)
+    args.push("-XX:+UseG1GC".to_string());
+    args.push("-XX:+UnlockExperimentalVMOptions".to_string());
+    args.push("-XX:G1NewSizePercent=20".to_string());
+    args.push("-XX:G1ReservePercent=20".to_string());
+    args.push("-XX:MaxGCPauseMillis=50".to_string());
+    args.push("-XX:G1HeapRegionSize=32M".to_string());
     
     // Process JVM arguments from version JSON
     if let Some(arguments) = &version_details.arguments {
@@ -642,6 +660,7 @@ pub fn build_jvm_args(
 fn deduplicate_jvm_args(args: Vec<String>) -> Vec<String> {
     let mut unique_args = Vec::new();
     let mut properties = std::collections::HashMap::new();
+    let mut seen_others = std::collections::HashSet::new();
     let mut xmx = None;
     let mut xms = None;
     let mut others = Vec::new();
@@ -656,16 +675,15 @@ fn deduplicate_jvm_args(args: Vec<String>) -> Vec<String> {
             let parts: Vec<&str> = arg.splitn(2, '=').collect();
             properties.insert(parts[0].to_string(), arg);
         } else if arg == "-cp" || arg == "-classpath" {
-            // We just note that we saw a CP flag, the next arg will be the value
-            // But wait, the classpath value is usually a separate string.
-            // Our builder adds them as ["-cp", "path"].
             cp = Some(arg);
         } else if let Some(_last_cp) = &cp {
-            // This is the classpath value
             properties.insert("-cp_val".to_string(), arg);
             cp = None;
         } else {
-            others.push(arg);
+            if !seen_others.contains(&arg) {
+                seen_others.insert(arg.clone());
+                others.push(arg);
+            }
         }
     }
 
@@ -934,7 +952,15 @@ pub async fn launch_game(
     let classpath = final_paths.join(separator);
     
     // Build arguments
-    let jvm_args = build_jvm_args(&actual_version_details, instance, &classpath);
+    let mut jvm_args = build_jvm_args(&actual_version_details, instance, &classpath);
+    
+    // Performance tricks used by Prism/MultiMC
+    #[cfg(target_os = "windows")]
+    {
+        jvm_args.push("-XX:HeapDumpPath=MojangTricksIntelDriversForPerformance_javaw.exe_minecraft.exe.heapdump".to_string());
+        jvm_args.push("-Duser.language=en".to_string());
+    }
+
     let game_args = build_game_args(&actual_version_details, instance, username, access_token, uuid);
     
     // Create game directory if it doesn't exist

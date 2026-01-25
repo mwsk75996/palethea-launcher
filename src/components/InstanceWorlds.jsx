@@ -4,7 +4,7 @@ import ConfirmModal from './ConfirmModal';
 import WorldDatapacks from './WorldDatapacks';
 import './ScreenshotContextMenu.css';
 
-function InstanceWorlds({ instance, onShowNotification }) {
+function InstanceWorlds({ instance, onShowNotification, isScrolled }) {
   const [worlds, setWorlds] = useState([]);
   const [loading, setLoading] = useState(true);
   const [deleteConfirm, setDeleteConfirm] = useState({ show: false, world: null });
@@ -173,13 +173,14 @@ function InstanceWorlds({ instance, onShowNotification }) {
         world={selectedWorld}
         onShowNotification={onShowNotification}
         onBack={() => setSelectedWorld(null)}
+        isScrolled={isScrolled}
       />
     );
   }
 
   return (
     <div className="worlds-tab">
-      <div className="console-actions">
+      <div className={`console-actions ${isScrolled ? 'scrolled' : ''}`}>
         <button className="open-btn" onClick={handleOpenFolder}>
           Open Saves Folder
         </button>

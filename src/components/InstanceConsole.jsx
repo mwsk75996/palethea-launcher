@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
+import { RotateCcw, Trash2, FolderOpen } from 'lucide-react';
 
 function InstanceConsole({ instance, onInstanceUpdated, onShowNotification, clearOnMount }) {
   const [logs, setLogs] = useState([]);
@@ -41,13 +42,19 @@ function InstanceConsole({ instance, onInstanceUpdated, onShowNotification, clea
     if (showLoading) setLoading(true);
     try {
       const logContent = await invoke('get_instance_log', { instanceId: instance.id });
-      if (logContent) {
-        const lines = logContent.split('\n').map((line, index) => ({
-          id: index,
-          text: line,
-          type: getLineType(line)
-        }));
-        setLogs(lines);
+      if (typeof logContent === 'string') {
+        if (logContent.trim().length === 0) {
+          setLogs([]);
+        } else {
+          const lines = logContent.split('\n').map((line, index) => ({
+            id: index,
+            text: line,
+            type: getLineType(line)
+          }));
+          setLogs(lines);
+        }
+      } else {
+        setLogs([]);
       }
     } catch (error) {
       console.error('Failed to load logs:', error);
@@ -94,35 +101,38 @@ function InstanceConsole({ instance, onInstanceUpdated, onShowNotification, clea
   };
 
   const handleRefresh = () => {
-    loadLogs(true);
+    (async () => {
+      setLoading(true);
+      try {
+        await new Promise((resolve) => setTimeout(resolve, 500));
+        await loadLogs(false);
+      } finally {
+        setLoading(false);
+      }
+    })();
   };
 
   const handleClear = () => {
     setLogs([]);
   };
 
-  if (loading) {
-    return (
-      <div className="console-tab">
-        <p>Loading logs...</p>
-      </div>
-    );
-  }
-
   return (
     <div className="console-tab">
       <div className="console-actions">
-        <button className="open-btn" onClick={handleRefresh}>
-          Refresh
+        <button className="open-btn" type="button" onClick={handleRefresh} title="Refresh logs">
+          <RotateCcw size={16} className={loading ? 'spinning' : ''} />
+          <span>Refresh</span>
         </button>
-        <button className="open-btn" onClick={handleClear}>
-          Clear
+        <button className="open-btn" type="button" onClick={handleClear} title="Clear console">
+          <Trash2 size={16} />
+          <span>Clear</span>
         </button>
-        <button className="open-btn" onClick={handleOpenLogsFolder}>
-          Open Logs Folder
+        <button className="open-btn" type="button" onClick={handleOpenLogsFolder} title="Open logs folder">
+          <FolderOpen size={16} />
+          <span>Open Folder</span>
         </button>
         <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: '14px', color: 'var(--text-secondary)', fontSize: '14px' }}>
-          <label style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
             <input
               type="checkbox"
               checked={autoUpdate}
@@ -130,7 +140,7 @@ function InstanceConsole({ instance, onInstanceUpdated, onShowNotification, clea
             />
             Auto-update
           </label>
-          <label style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
             <input
               type="checkbox"
               checked={autoScroll}
@@ -141,17 +151,38 @@ function InstanceConsole({ instance, onInstanceUpdated, onShowNotification, clea
         </div>
       </div>
 
-      <div className="console-output" ref={consoleRef}>
-        {logs.length === 0 ? (
-          <div className="no-logs">
-            No logs available. Launch the game to see console output.
+      <div className={`console-output-wrap ${loading ? 'is-refreshing' : ''}`}>
+        <div className="console-output" ref={consoleRef}>
+          <div className="console-content">
+            {loading && logs.length === 0 ? (
+              <div className="console-loading-inner">
+                <div className="loading-spinner"></div>
+                <p>Loading instance logs...</p>
+              </div>
+            ) : (
+              <>
+                {logs.length === 0 ? (
+                  <div className="no-logs">
+                    No logs available. Launch the game to see console output.
+                  </div>
+                ) : (
+                  logs.map((line) => (
+                    <div key={line.id} className={`log-line ${line.type}`}>
+                      {line.text}
+                    </div>
+                  ))
+                )}
+              </>
+            )}
           </div>
-        ) : (
-          logs.map((line) => (
-            <div key={line.id} className={`log-line ${line.type}`}>
-              {line.text}
+        </div>
+        {loading && (
+          <div className="console-refreshing-overlay">
+            <div className="console-refreshing-pill">
+              <div className="loading-spinner small"></div>
+              <span>Refreshing...</span>
             </div>
-          ))
+          </div>
         )}
       </div>
     </div>

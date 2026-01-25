@@ -14,6 +14,7 @@ use crate::minecraft::instances::Instance;
 pub struct InstalledMod {
     pub filename: String,
     pub name: Option<String>,
+    pub author: Option<String>,
     pub version: Option<String>,
     pub enabled: bool,
     pub project_id: Option<String>,
@@ -35,6 +36,8 @@ pub struct ModMeta {
     #[serde(default)]
     pub name: Option<String>,
     #[serde(default)]
+    pub author: Option<String>,
+    #[serde(default)]
     pub icon_url: Option<String>,
     #[serde(default)]
     pub version_name: Option<String>,
@@ -44,6 +47,7 @@ pub struct ModMeta {
 pub struct ResourcePack {
     pub filename: String,
     pub name: Option<String>,
+    pub author: Option<String>,
     pub version: Option<String>,
     #[serde(default)]
     pub project_id: Option<String>,
@@ -61,6 +65,7 @@ pub struct ResourcePack {
 pub struct ShaderPack {
     pub filename: String,
     pub name: Option<String>,
+    pub author: Option<String>,
     pub version: Option<String>,
     #[serde(default)]
     pub project_id: Option<String>,
@@ -78,6 +83,7 @@ pub struct ShaderPack {
 pub struct Datapack {
     pub filename: String,
     pub name: Option<String>,
+    pub author: Option<String>,
     pub version: Option<String>,
     pub enabled: bool,
     #[serde(default)]
@@ -176,6 +182,7 @@ pub fn list_mods(instance: &Instance) -> Vec<InstalledMod> {
                 let mut project_id = None;
                 let mut version_id = None;
                 let mut name = Some(filename.trim_end_matches(".disabled").trim_end_matches(".jar").to_string());
+                let mut author: Option<String> = None;
                 let mut icon_url = None;
                 let mut version = None;
                 let mut provider = "Manual".to_string();
@@ -186,6 +193,7 @@ pub fn list_mods(instance: &Instance) -> Vec<InstalledMod> {
                             project_id = Some(m.project_id);
                             version_id = m.version_id;
                             if let Some(n) = m.name { name = Some(n); }
+                            author = m.author;
                             icon_url = m.icon_url;
                             version = m.version_name;
                             provider = "Modrinth".to_string();
@@ -196,6 +204,7 @@ pub fn list_mods(instance: &Instance) -> Vec<InstalledMod> {
                 mods.push(InstalledMod {
                     filename: filename.clone(),
                     name,
+                    author,
                     version,
                     enabled,
                     project_id,
@@ -277,6 +286,7 @@ pub fn list_resourcepacks(instance: &Instance) -> Vec<ResourcePack> {
                 let mut project_id = None;
                 let mut version_id = None;
                 let mut icon_url = None;
+                let mut author: Option<String> = None;
                 let mut version = None;
                 let mut name = Some(filename.trim_end_matches(".zip").to_string());
                 let mut provider = "Manual".to_string();
@@ -287,6 +297,7 @@ pub fn list_resourcepacks(instance: &Instance) -> Vec<ResourcePack> {
                             project_id = Some(m.project_id);
                             version_id = m.version_id;
                             if let Some(n) = m.name { name = Some(n); }
+                            author = m.author;
                             icon_url = m.icon_url;
                             version = m.version_name;
                             provider = "Modrinth".to_string();
@@ -297,6 +308,7 @@ pub fn list_resourcepacks(instance: &Instance) -> Vec<ResourcePack> {
                 packs.push(ResourcePack {
                     filename: filename.clone(),
                     name,
+                    author,
                     version,
                     project_id,
                     version_id,
@@ -357,6 +369,7 @@ pub fn list_shaderpacks(instance: &Instance) -> Vec<ShaderPack> {
                 let mut project_id = None;
                 let mut version_id = None;
                 let mut icon_url = None;
+                let mut author: Option<String> = None;
                 let mut version = None;
                 let mut name = Some(filename.trim_end_matches(".zip").to_string());
                 let mut provider = "Manual".to_string();
@@ -367,6 +380,7 @@ pub fn list_shaderpacks(instance: &Instance) -> Vec<ShaderPack> {
                             project_id = Some(m.project_id);
                             version_id = m.version_id;
                             if let Some(n) = m.name { name = Some(n); }
+                            author = m.author;
                             icon_url = m.icon_url;
                             version = m.version_name;
                             provider = "Modrinth".to_string();
@@ -377,6 +391,7 @@ pub fn list_shaderpacks(instance: &Instance) -> Vec<ShaderPack> {
                 packs.push(ShaderPack {
                     filename: filename.clone(),
                     name,
+                    author,
                     version,
                     project_id,
                     version_id,
@@ -630,6 +645,7 @@ pub fn list_datapacks(instance: &Instance, world_name: &str) -> Vec<Datapack> {
                 let mut project_id = None;
                 let mut version_id = None;
                 let mut icon_url = None;
+                let mut author: Option<String> = None;
                 let mut version = None;
                 let mut name = Some(filename.trim_end_matches(".zip").trim_end_matches(".jar").to_string());
                 let mut provider = "Manual".to_string();
@@ -640,6 +656,7 @@ pub fn list_datapacks(instance: &Instance, world_name: &str) -> Vec<Datapack> {
                             project_id = Some(m.project_id);
                             version_id = m.version_id;
                             if let Some(n) = m.name { name = Some(n); }
+                            author = m.author;
                             icon_url = m.icon_url;
                             version = m.version_name;
                             provider = "Modrinth".to_string();
@@ -650,6 +667,7 @@ pub fn list_datapacks(instance: &Instance, world_name: &str) -> Vec<Datapack> {
                 datapacks.push(Datapack {
                     filename: filename.clone(),
                     name,
+                    author,
                     version,
                     project_id,
                     version_id,

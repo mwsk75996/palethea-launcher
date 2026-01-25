@@ -1,6 +1,7 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { open } from '@tauri-apps/plugin-dialog';
+import { Loader2 } from 'lucide-react';
 import './CreateInstance.css';
 import VersionSelector from './VersionSelector';
 
@@ -27,6 +28,25 @@ function CreateInstance({ onClose, onCreate, isLoading, mode = 'page' }) {
   const [modpackTotalSize, setModpackTotalSize] = useState(null);
   const [sizeLoading, setSizeLoading] = useState(false);
 
+  // Pagination states
+  const [modpackOffset, setModpackOffset] = useState(0);
+  const [hasMoreModpacks, setHasMoreModpacks] = useState(true);
+  const [loadingMoreModpacks, setLoadingMoreModpacks] = useState(false);
+  const modpackObserver = useRef();
+
+  const lastModpackRef = useCallback(node => {
+    if (modpacksLoading || loadingMoreModpacks) return;
+    if (modpackObserver.current) modpackObserver.current.disconnect();
+    
+    modpackObserver.current = new IntersectionObserver(entries => {
+      if (entries[0].isIntersecting && hasMoreModpacks) {
+        handleLoadMoreModpacks();
+      }
+    });
+    
+    if (node) modpackObserver.current.observe(node);
+  }, [modpacksLoading, loadingMoreModpacks, hasMoreModpacks]);
+
   // Import state
   const [importZipPath, setImportZipPath] = useState('');
   const [importInfo, setImportInfo] = useState(null); // { name, version_id, mod_loader }
@@ -36,6 +56,13 @@ function CreateInstance({ onClose, onCreate, isLoading, mode = 'page' }) {
   const [decodedShareData, setDecodedShareData] = useState(null);
   const [decodingError, setDecodingError] = useState('');
   const [isDecoding, setIsDecoding] = useState(false);
+
+  // Java recommendation state
+  const [selectedJava, setSelectedJava] = useState(21);
+  const [isJavaInstalled, setIsJavaInstalled] = useState(false);
+  const [isJavaChecking, setIsJavaChecking] = useState(false);
+  const [isJavaDownloading, setIsJavaDownloading] = useState(false);
+  const [javaDownloadError, setJavaDownloadError] = useState('');
 
   // Filters
   const [enabledTypes, setEnabledTypes] = useState(['release']);
@@ -146,9 +173,71 @@ function CreateInstance({ onClose, onCreate, isLoading, mode = 'page' }) {
     }
   };
 
+  const getRecommendedJava = (mcVersion) => {
+    if (!mcVersion) return 21;
+    try {
+      // Extract major/minor version
+      const parts = mcVersion.split('.');
+      if (parts.length < 2) return 21;
+      const minor = parseInt(parts[1]);
+      
+      // Minecraft 1.20.5+ requires Java 21
+      // Note: 1.20.5 is basically minor 20 with specific patch, but we check common versions
+      if (minor >= 21) return 21;
+      if (minor === 20) {
+        const patch = parts.length > 2 ? parseInt(parts[2]) : 0;
+        if (patch >= 5) return 21;
+        return 17;
+      }
+      
+      if (minor >= 18) return 17;
+      if (minor === 17) return 16;
+      return 8;
+    } catch (e) {
+      return 17;
+    }
+  };
+
+  useEffect(() => {
+    const checkJava = async () => {
+      setIsJavaChecking(true);
+      try {
+        const installed = await invoke('is_java_version_installed', { version: selectedJava });
+        setIsJavaInstalled(installed);
+      } catch (e) {
+        console.error('Failed to check Java:', e);
+      }
+      setIsJavaChecking(false);
+    };
+
+    if (step === 3) {
+      checkJava();
+    }
+  }, [step, selectedJava]);
+
+  useEffect(() => {
+    // When selected version changes, update recommended java
+    let mcVersion = null;
+    if (creationMode === 'version') {
+      mcVersion = selectedVersion;
+    } else if (creationMode === 'modpack' && selectedModpackVersion) {
+      mcVersion = selectedModpackVersion.game_versions[0];
+    } else if (creationMode === 'share-code' && decodedShareData) {
+      mcVersion = decodedShareData.version;
+    } else if (creationMode === 'import' && importInfo) {
+      mcVersion = importInfo.version_id;
+    }
+
+    if (mcVersion) {
+      setSelectedJava(getRecommendedJava(mcVersion));
+    }
+  }, [selectedVersion, selectedModpackVersion, decodedShareData, importInfo, creationMode]);
+
   const handleSearchModpacks = async (queryOverride) => {
     const query = queryOverride !== undefined ? queryOverride : modpackSearch;
     setModpacksLoading(true);
+    setModpackOffset(0);
+    setHasMoreModpacks(true);
     try {
       const result = await invoke('search_modrinth', {
         query: query,
@@ -157,10 +246,34 @@ function CreateInstance({ onClose, onCreate, isLoading, mode = 'page' }) {
         offset: 0
       });
       setModpacks(result.hits);
+      setHasMoreModpacks(result.hits.length === 20 && result.total_hits > 20);
+      setModpackOffset(result.hits.length);
     } catch (error) {
       console.error('Failed to search modpacks:', error);
     }
     setModpacksLoading(false);
+  };
+
+  const handleLoadMoreModpacks = async () => {
+    if (loadingMoreModpacks || !hasMoreModpacks) return;
+    setLoadingMoreModpacks(true);
+    try {
+      const result = await invoke('search_modrinth', {
+        query: modpackSearch,
+        projectType: 'modpack',
+        limit: 20,
+        offset: modpackOffset
+      });
+      const newHits = result.hits || [];
+      if (newHits.length > 0) {
+        setModpacks(prev => [...prev, ...newHits]);
+        setModpackOffset(prev => prev + newHits.length);
+      }
+      setHasMoreModpacks(newHits.length === 20 && (modpackOffset + newHits.length) < result.total_hits);
+    } catch (error) {
+      console.error('Failed to load more modpacks:', error);
+    }
+    setLoadingMoreModpacks(false);
   };
 
   const handleSelectModpack = async (mp) => {
@@ -199,6 +312,13 @@ function CreateInstance({ onClose, onCreate, isLoading, mode = 'page' }) {
         if (!name) {
           setName(filename);
         }
+
+        try {
+          const metadata = await invoke('peek_instance_zip', { zipPath: selected });
+          setImportInfo(metadata);
+        } catch (peekError) {
+          console.error('Failed to peek zip metadata:', peekError);
+        }
       }
     } catch (error) {
       console.error('Failed to select file:', error);
@@ -227,10 +347,25 @@ function CreateInstance({ onClose, onCreate, isLoading, mode = 'page' }) {
     setIsDecoding(false);
   };
 
-  const handleCreate = () => {
+  const handleCreate = async () => {
+    // If Java is not installed, we download it first
+    if (!isJavaInstalled) {
+      setIsJavaDownloading(true);
+      setJavaDownloadError('');
+      try {
+        await invoke('download_java_global', { version: selectedJava });
+        setIsJavaInstalled(true);
+      } catch (e) {
+        setJavaDownloadError(`Failed to download Java: ${e}`);
+        setIsJavaDownloading(false);
+        return;
+      }
+      setIsJavaDownloading(false);
+    }
+
     if (creationMode === 'version') {
       if (name.trim() && selectedVersion) {
-        onCreate(name.trim(), selectedVersion, modLoader, selectedLoaderVersion || null);
+        onCreate(name.trim(), selectedVersion, modLoader, (selectedLoaderVersion || null), selectedJava);
       }
     } else if (creationMode === 'modpack') {
       if (name.trim() && selectedModpack && selectedModpackVersion) {
@@ -240,20 +375,20 @@ function CreateInstance({ onClose, onCreate, isLoading, mode = 'page' }) {
           versionId: selectedModpackVersion.id,
           modpackName: selectedModpack.title,
           modpackIcon: selectedModpack.icon_url
-        });
+        }, selectedJava);
       }
     } else if (creationMode === 'import') {
       if (importZipPath) {
         // Pass import data
         onCreate(name.trim() || null, 'import', 'import', {
           zipPath: importZipPath
-        });
+        }, selectedJava);
       }
     } else if (creationMode === 'share-code') {
       if (decodedShareData) {
         onCreate(name.trim() || decodedShareData.name, 'share-code', 'share-code', {
           shareData: decodedShareData
-        });
+        }, selectedJava);
       }
     }
   };
@@ -270,6 +405,11 @@ function CreateInstance({ onClose, onCreate, isLoading, mode = 'page' }) {
       : creationMode === 'share-code'
         ? !!decodedShareData
         : !!importZipPath;
+  const canNextFromLoader = creationMode === 'version'
+    ? (modLoader === 'vanilla' || !!selectedLoaderVersion)
+    : creationMode === 'modpack'
+      ? !!selectedModpackVersion
+      : true; // import/share-code don't have a loader step before java
   const canCreate = creationMode === 'version'
     ? (name.trim() && selectedVersion && (modLoader === 'vanilla' || selectedLoaderVersion))
     : creationMode === 'modpack'
@@ -291,8 +431,8 @@ function CreateInstance({ onClose, onCreate, isLoading, mode = 'page' }) {
     <div className={isPage ? 'create-page' : 'modal'} onClick={(e) => e.stopPropagation()}>
       <div className={isPage ? 'create-header' : 'modal-header'}>
         <h2>{creationMode === 'import'
-          ? (step === 0 ? 'Instance Identity' : 'Select File')
-          : (step === 0 ? 'Instance Identity' : step === 1 ? 'Minecraft Version' : 'Modifications')
+          ? (step === 0 ? 'Instance Identity' : step === 1 ? 'Select File' : 'Java Environment')
+          : (step === 0 ? 'Instance Identity' : step === 1 ? 'Minecraft Version' : step === 2 ? 'Modifications' : 'Java Environment')
         }</h2>
         {!isPage && <button className="close-btn" onClick={onClose}>×</button>}
       </div>
@@ -300,11 +440,15 @@ function CreateInstance({ onClose, onCreate, isLoading, mode = 'page' }) {
       <div className="create-steps">
         <div className={`create-step ${step === 0 ? 'active' : ''}`}>Setup</div>
         {creationMode === 'import' ? (
-          <div className={`create-step ${step === 1 ? 'active' : ''}`}>Select File</div>
+          <>
+            <div className={`create-step ${step === 1 ? 'active' : ''}`}>Select File</div>
+            <div className={`create-step ${step === 2 ? 'active' : ''}`}>Java</div>
+          </>
         ) : (
           <>
-            <div className={`create-step ${step === 1 ? 'active' : ''}`}>{creationMode === 'version' ? 'Version' : 'Modpack'}</div>
-            <div className={`create-step ${step === 2 ? 'active' : ''}`}>{creationMode === 'version' ? 'Loader' : 'Review'}</div>
+            <div className={`create-step ${step === 1 ? 'active' : ''}`}>Version</div>
+            <div className={`create-step ${step === 2 ? 'active' : ''}`}>Loader</div>
+            <div className={`create-step ${step === 3 ? 'active' : ''}`}>Java</div>
           </>
         )}
       </div>
@@ -554,11 +698,12 @@ function CreateInstance({ onClose, onCreate, isLoading, mode = 'page' }) {
                 </div>
               ) : (
                 <div className="modpack-grid">
-                  {modpacks.map((mp) => (
+                  {modpacks.map((mp, index) => (
                     <div
-                      key={mp.project_id}
+                      key={`${mp.project_id}-${index}`}
                       className={`modpack-card ${selectedModpack?.project_id === mp.project_id ? 'selected' : ''}`}
                       onClick={() => handleSelectModpack(mp)}
+                      ref={index === modpacks.length - 1 ? lastModpackRef : null}
                     >
                       <div className="modpack-card-icon">
                         {mp.icon_url ? (
@@ -577,6 +722,14 @@ function CreateInstance({ onClose, onCreate, isLoading, mode = 'page' }) {
                       </div>
                     </div>
                   ))}
+                  {loadingMoreModpacks && (
+                    <div className="modpack-card loading-card">
+                      <div className="loading-more-container">
+                        <Loader2 className="spin-icon" size={20} />
+                        <span>Loading more...</span>
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
@@ -719,6 +872,76 @@ function CreateInstance({ onClose, onCreate, isLoading, mode = 'page' }) {
             </div>
           </div>
         )}
+
+        {((creationMode === 'import' || creationMode === 'share-code') ? step === 2 : step === 3) && (
+          <div className="java-step">
+            <div className="java-recommendation">
+              <div className="recommendation-icon">☕</div>
+              <div className="recommendation-text">
+                <h3>Java Environment</h3>
+                <p>
+                  Minecraft {creationMode === 'version' ? selectedVersion : 
+                     creationMode === 'modpack' ? selectedModpackVersion?.game_versions[0] : 
+                     creationMode === 'share-code' ? decodedShareData?.version : 
+                     creationMode === 'import' ? importInfo?.version_id : ''}{' '}
+                  runs best with <strong>Java {getRecommendedJava(
+                    creationMode === 'version' ? selectedVersion : 
+                    creationMode === 'modpack' ? selectedModpackVersion?.game_versions[0] : 
+                    creationMode === 'share-code' ? decodedShareData?.version : 
+                    creationMode === 'import' ? importInfo?.version_id : ''
+                  )}</strong>.
+                </p>
+              </div>
+            </div>
+
+            <div className="java-selector-grid">
+              {[8, 16, 17, 21].map(v => {
+                const isRecommended = v === getRecommendedJava(
+                  creationMode === 'version' ? selectedVersion : 
+                  creationMode === 'modpack' ? selectedModpackVersion?.game_versions[0] : 
+                  creationMode === 'share-code' ? decodedShareData?.version : 
+                  creationMode === 'import' ? importInfo?.version_id : ''
+                );
+                return (
+                  <div 
+                    key={v} 
+                    className={`java-option-card ${selectedJava === v ? 'active' : ''} ${isRecommended ? 'recommended' : ''}`}
+                    onClick={() => setSelectedJava(v)}
+                  >
+                    {isRecommended && <div className="recommended-badge">Recommended</div>}
+                    <div className="java-version-info">
+                      <span className="java-version-name">Java {v}</span>
+                      <span className="java-vendor"> {' '}LTS OpenJDK</span>
+                    </div>
+                    <div className="java-status">
+                      {isJavaChecking && selectedJava === v ? (
+                        <div className="mini-spinner"></div>
+                      ) : (
+                        // We can't easily check all versions at once without more backend commands,
+                        // so we just show "Selected" vs "Available"
+                        selectedJava === v ? (
+                          isJavaInstalled ? "✓ Ready" : "⬇ Needs Download"
+                        ) : ""
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {!isJavaInstalled && !isJavaChecking && (
+              <div className="java-download-prompt active">
+                <div className="prompt-icon">ℹ</div>
+                <div className="prompt-content">
+                  <h4>Download Required</h4>
+                  <p>Java {selectedJava} will be automatically downloaded and configured for this instance when you click Create.</p>
+                </div>
+              </div>
+            )}
+
+            {javaDownloadError && <div className="error-message">{javaDownloadError}</div>}
+          </div>
+        )}
       </div>
 
       <div className={isPage ? 'create-footer' : 'modal-footer'}>
@@ -738,11 +961,16 @@ function CreateInstance({ onClose, onCreate, isLoading, mode = 'page' }) {
         {/* Step Navigation */}
         {/* Description: Next/Create buttons, import mode has only 2 steps */}
         {/* ---------- */}
-        {(creationMode === 'import' || creationMode === 'share-code' ? step < 1 : step < 2) ? (
+        {(creationMode === 'import' || creationMode === 'share-code' ? step < 2 : step < 3) ? (
           <button
             className="btn btn-primary"
             onClick={() => setStep(step + 1)}
-            disabled={isLoading || (step === 0 && !canNextFromName) || (step === 1 && !canNextFromVersion)}
+            disabled={
+              isLoading || 
+              (step === 0 && !canNextFromName) || 
+              (step === 1 && !canNextFromVersion) ||
+              (step === 2 && !canNextFromLoader)
+            }
           >
             Next
           </button>
@@ -750,9 +978,11 @@ function CreateInstance({ onClose, onCreate, isLoading, mode = 'page' }) {
           <button
             className="btn btn-primary"
             onClick={handleCreate}
-            disabled={!canCreate || isLoading}
+            disabled={!canCreate || isLoading || isJavaDownloading}
           >
-            {isLoading ? (creationMode === 'import' || creationMode === 'share-code' ? 'Processing...' : 'Creating...') : (creationMode === 'import' ? 'Import Instance' : creationMode === 'share-code' ? 'Create Instance' : 'Create Instance')}
+            {isLoading ? (creationMode === 'import' || creationMode === 'share-code' ? 'Processing...' : 'Creating...') : 
+             (isJavaDownloading ? 'Downloading Java...' : 
+              (creationMode === 'import' ? 'Import Instance' : 'Create Instance'))}
           </button>
         )}
       </div>

@@ -6,13 +6,38 @@ import { Box, ChevronDown, ChevronUp, Cpu, Save, Trash2 } from 'lucide-react';
 import VersionSelector from './VersionSelector';
 
 function InstanceSettings({ instance, onSave, onInstanceUpdated, onShowConfirm, onDelete, onShowNotification }) {
+  const getRecommendedJava = (mcVersion) => {
+    if (!mcVersion) return 21;
+    try {
+      // Extract major/minor version
+      const parts = mcVersion.split('.');
+      if (parts.length < 2) return 21;
+      const minor = parseInt(parts[1]);
+
+      // Minecraft 1.20.5+ requires Java 21
+      // Note: 1.20.5 is basically minor 20 with specific patch, but we check common versions
+      if (minor >= 21) return 21;
+      if (minor === 20) {
+        const patch = parts.length > 2 ? parseInt(parts[2]) : 0;
+        if (patch >= 5) return 21;
+        return 17;
+      }
+
+      if (minor >= 18) return 17;
+      if (minor === 17) return 16;
+      return 8;
+    } catch (e) {
+      return 17;
+    }
+  };
+
   const [name, setName] = useState(instance.name);
   const [versionId, setVersionId] = useState(instance.version_id);
   const [colorAccent, setColorAccent] = useState(instance.color_accent || '#ffffff');
   const [modLoader, setModLoader] = useState(instance.mod_loader || 'Vanilla');
   const [modLoaderVersion, setModLoaderVersion] = useState(instance.mod_loader_version || '');
   const [javaPath, setJavaPath] = useState(instance.java_path || '');
-  const [javaDownloadVersion, setJavaDownloadVersion] = useState('21');
+  const [javaDownloadVersion, setJavaDownloadVersion] = useState(getRecommendedJava(instance.version_id).toString());
   const [javaDownloading, setJavaDownloading] = useState(false);
   const [javaDownloadError, setJavaDownloadError] = useState('');
   const [memory, setMemory] = useState(instance.memory_max || 4096);
@@ -31,6 +56,12 @@ function InstanceSettings({ instance, onSave, onInstanceUpdated, onShowConfirm, 
   useEffect(() => {
     loadVersions();
   }, []);
+
+  useEffect(() => {
+    // Update recommended Java version when Minecraft version changes
+    const recommended = getRecommendedJava(versionId);
+    setJavaDownloadVersion(recommended.toString());
+  }, [versionId]);
 
   useEffect(() => {
     if (modLoader !== 'Vanilla') {
@@ -426,9 +457,10 @@ function InstanceSettings({ instance, onSave, onInstanceUpdated, onShowConfirm, 
                 value={javaDownloadVersion}
                 onChange={(e) => setJavaDownloadVersion(e.target.value)}
               >
-                <option value="8">Java 8 (Legacy)</option>
-                <option value="17">Java 17</option>
-                <option value="21">Java 21 (Recommended)</option>
+                <option value="8">Java 8 {getRecommendedJava(versionId) === 8 ? '(Recommended)' : '(Legacy)'}</option>
+                <option value="16">Java 16 {getRecommendedJava(versionId) === 16 ? '(Recommended)' : ''}</option>
+                <option value="17">Java 17 {getRecommendedJava(versionId) === 17 ? '(Recommended)' : ''}</option>
+                <option value="21">Java 21 {getRecommendedJava(versionId) === 21 ? '(Recommended)' : ''}</option>
               </select>
               <button
                 className="btn btn-secondary"
@@ -439,6 +471,9 @@ function InstanceSettings({ instance, onSave, onInstanceUpdated, onShowConfirm, 
               </button>
             </div>
           </div>
+          <p className="setting-hint" style={{ marginTop: '-12px', marginBottom: '12px', color: 'var(--text-secondary)', fontSize: '11px', lineHeight: '1.4' }}>
+            <strong>Note:</strong> Java 21 for 1.20.5+ (including 1.21), Java 17 for 1.18–1.20.4, Java 16 for 1.17, and Java 8 for 1.16.5 and older.
+          </p>
           {javaDownloadError && (
             <div className="java-download-error">{javaDownloadError}</div>
           )}

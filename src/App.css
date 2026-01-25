@@ -98,6 +98,39 @@ html, body, #root {
   color: var(--foreground);
 }
 
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.spin-icon {
+  animation: spin 1s linear infinite;
+}
+
+.loading-more {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  gap: 12px;
+  color: var(--foreground-muted);
+  width: 100%;
+}
+
+.loading-more span {
+  font-size: 14px;
+}
+
+.loading-more-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  height: 100%;
+  width: 100%;
+}
+
 @keyframes slideIn {
   from {
     transform: translateY(20px);
@@ -121,6 +154,28 @@ html, body, #root {
   border-left: 3px solid #f87171;
 }
 
+.notification {
+  display: flex !important;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.notification-close {
+  background: none;
+  border: none;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 14px;
+  padding: 4px;
+  opacity: 0.6;
+  transition: opacity 0.2s;
+}
+
+.notification-close:hover {
+  opacity: 1;
+}
+
 /* Loading overlay */
 .loading-overlay {
   position: fixed;
@@ -141,7 +196,7 @@ html, body, #root {
   flex-direction: column;
   align-items: center;
   gap: 16px;
-  min-width: 300px;
+  width: 420px;
 }
 
 .loading-spinner {
@@ -158,6 +213,17 @@ html, body, #root {
   font-size: 14px;
   margin: 0;
   text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  width: 100%;
+}
+
+.loading-count, .loading-bytes {
+  font-size: 13px;
+  color: var(--foreground-muted);
+  font-family: 'JetBrains Mono', monospace;
+  margin-top: -8px;
 }
 
 /* Initial App Loading Screen */
@@ -226,7 +292,6 @@ html, body, #root {
   height: 100%;
   background: var(--accent);
   border-radius: 4px;
-  transition: width 0.2s ease;
 }
 
 .loading-percentage {
@@ -234,13 +299,15 @@ html, body, #root {
   font-size: 13px;
   margin: 0;
   font-variant-numeric: tabular-nums;
+  font-weight: 600;
 }
 
-.loading-bytes {
+.loading-bytes, .loading-count {
   color: var(--muted);
   font-size: 11px;
   margin: -4px 0 0 0;
   font-variant-numeric: tabular-nums;
+  opacity: 0.8;
 }
 
 /* Welcome modal */
@@ -546,4 +613,37 @@ html, body, #root {
 .setting-hint {
   font-size: 12px;
   color: var(--muted);
+}
+
+.clear-search-btn {
+  background: transparent;
+  border: none;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 14px;
+  padding: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 0.15s ease;
+  z-index: 5;
+}
+
+.clear-search-btn:hover {
+  color: var(--foreground);
+}
+
+.text-btn {
+  background: transparent;
+  border: none;
+  color: var(--accent);
+  cursor: pointer;
+  font-size: 14px;
+  margin-top: 8px;
+  text-decoration: underline;
+  padding: 0;
+}
+
+.text-btn:hover {
+  text-decoration: none;
 }

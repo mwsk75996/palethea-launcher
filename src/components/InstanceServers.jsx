@@ -70,7 +70,7 @@ const parseMinecraftColors = (text) => {
 
 const stripMinecraftCodes = (text) => text?.replace(/§[0-9a-fk-or]/g, '') || '';
 
-function InstanceServers({ instance, onShowNotification }) {
+function InstanceServers({ instance, onShowNotification, isScrolled }) {
   const [servers, setServers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [pingData, setPingData] = useState({});
@@ -253,7 +253,7 @@ function InstanceServers({ instance, onShowNotification }) {
 
   return (
     <div className="servers-tab">
-      <div className="tab-header-actions">
+      <div className={`tab-header-actions ${isScrolled ? 'scrolled' : ''}`}>
         <button className="add-server-btn" onClick={() => setShowAddModal(true)}>
           <svg viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" strokeWidth="2.5" fill="none">
             <line x1="12" y1="5" x2="12" y2="19"></line>

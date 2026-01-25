@@ -31,16 +31,16 @@
   margin: 0;
 }
 
-.header-left {
+.header-actions {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   gap: 24px;
 }
 
 .sort-controls {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 12px;
 }
 
 .sort-label {
@@ -62,6 +62,41 @@
 
 .sort-select:hover {
   border-color: var(--muted);
+}
+
+.view-controls {
+  display: flex;
+  background: var(--surface-hover);
+  border: 1px solid var(--border);
+  padding: 3px;
+  border-radius: 6px;
+  gap: 2px;
+}
+
+.view-btn {
+  background: transparent;
+  border: none;
+  color: var(--muted);
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  border-radius: 4px;
+  transition: all 0.1s ease;
+}
+
+.view-btn:hover {
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--foreground);
+}
+
+.view-btn.active {
+  background: var(--surface);
+  color: var(--accent);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
 }
 
 .empty-state {
@@ -139,25 +174,50 @@
 }
 
 .instances-grid {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
   padding: 40px 32px 32px 32px;
 }
 
-.instance-card {
+.instances-grid.list {
   display: flex;
-  align-items: center;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.instances-grid.grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
   gap: 16px;
-  padding: 16px 20px;
+}
+
+.instance-card {
+  position: relative;
+  display: flex;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 8px;
   transition: all 0.15s ease;
 }
 
+.instances-grid.list .instance-card {
+  align-items: center;
+  gap: 16px;
+  padding: 16px 20px;
+}
+
+.instances-grid.grid .instance-card {
+  flex-direction: column;
+  align-items: flex-start;
+  padding: 24px;
+  gap: 20px;
+}
+
 .instance-card:hover {
   border-color: var(--muted);
+}
+
+.instance-logo-wrapper {
+  position: relative;
+  flex-shrink: 0;
 }
 
 .instance-logo {
@@ -170,6 +230,45 @@
   justify-content: center;
   overflow: hidden;
   border: 1px solid var(--border);
+}
+
+.instance-loader-badge {
+  position: absolute;
+  bottom: -4px;
+  right: -4px;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 1px 5px;
+  border-radius: 4px;
+  text-transform: capitalize;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--foreground);
+  line-height: 1.4;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+  z-index: 5;
+}
+
+.instances-grid.list .instance-loader-badge {
+  display: none;
+}
+
+.instances-grid.grid .loader-inline {
+  display: none;
+}
+
+.loader-inline {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 4px 10px;
+  border-radius: 999px;
+  text-transform: capitalize;
+  border: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--foreground);
+  display: inline-flex;
+  align-items: center;
+  height: 22px;
 }
 
 .instance-logo img {
@@ -188,6 +287,10 @@
   flex: 1;
 }
 
+.instances-grid.grid .instance-info {
+  width: 100%;
+}
+
 .instance-name {
   font-size: 15px;
   font-weight: 500;
@@ -200,28 +303,12 @@
   display: flex;
   align-items: center;
   gap: 10px;
-  min-height: 24px;
 }
 
-.instance-name,
-.loader-inline {
+.instance-name {
   margin-top: 0;
   margin-bottom: 0;
   line-height: 1.2;
-}
-
-.loader-inline {
-  font-size: 11px;
-  font-weight: 600;
-  padding: 4px 10px;
-  border-radius: 999px;
-  text-transform: capitalize;
-  border: 1px solid var(--border);
-  background: rgba(255, 255, 255, 0.03);
-  color: var(--foreground);
-  display: inline-flex;
-  align-items: center;
-  height: 22px;
 }
 
 .instance-meta {
@@ -239,7 +326,6 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  flex-wrap: wrap;
 }
 
 .meta-row.subtle {
@@ -298,6 +384,41 @@
   align-items: center;
   gap: 8px;
   flex-shrink: 0;
+}
+
+.instances-grid.grid .instance-actions {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  width: auto;
+  border-top: none;
+  padding-top: 0;
+  gap: 6px;
+}
+
+.instances-grid.grid .btn-play,
+.instances-grid.grid .btn-danger,
+.instances-grid.grid .btn-secondary {
+  padding: 0 12px;
+  height: 32px;
+  font-size: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.instances-grid.grid .delete-btn-standalone,
+.instances-grid.grid .btn-icon {
+  width: 32px;
+  height: 32px;
+}
+
+.instances-grid.grid .instance-info {
+  width: 100%;
+}
+
+.instances-grid.grid .instance-title {
+  padding-right: 140px; /* Space for absolute buttons */
 }
 
 .btn-play {
@@ -395,3 +516,11 @@
   opacity: 0.4;
   cursor: not-allowed;
 }
+
+/* Mod Loader Colors */
+.instance-loader-badge.forge, .loader-inline.forge { color: #eb9a3e; border-color: rgba(235, 154, 62, 0.3); }
+.instance-loader-badge.fabric, .loader-inline.fabric { color: #dbcdc1; border-color: rgba(219, 205, 193, 0.3); }
+.instance-loader-badge.quilt, .loader-inline.quilt { color: #f382a8; border-color: rgba(243, 130, 168, 0.3); }
+.instance-loader-badge.neoforge, .instance-loader-badge.neo-forge, .loader-inline.neoforge, .loader-inline.neo-forge { color: #f7a233; border-color: rgba(247, 162, 51, 0.3); }
+.instance-loader-badge.vanilla, .loader-inline.vanilla { color: #888; border-color: rgba(136, 136, 136, 0.3); }
+.instance-loader-badge.liteloader, .loader-inline.liteloader { color: #3ea0f2; border-color: rgba(62, 160, 242, 0.3); }

@@ -1,13 +1,14 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { Trash2, RefreshCcw, Plus, Upload, Copy, Code } from 'lucide-react';
+import { Trash2, RefreshCcw, Plus, Upload, Copy, Code, Loader2 } from 'lucide-react';
 import { open } from '@tauri-apps/plugin-dialog';
 import ConfirmModal from './ConfirmModal';
 import ModVersionModal from './ModVersionModal';
 
-function InstanceMods({ instance, onShowConfirm, onShowNotification }) {
+function InstanceMods({ instance, onShowConfirm, onShowNotification, isScrolled }) {
   const [activeSubTab, setActiveSubTab] = useState('installed');
   const [searchQuery, setSearchQuery] = useState('');
+  const [installedSearchQuery, setInstalledSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState([]);
   const [popularMods, setPopularMods] = useState([]);
   const [installedMods, setInstalledMods] = useState([]);
@@ -16,6 +17,8 @@ function InstanceMods({ instance, onShowConfirm, onShowNotification }) {
   const [updatingMods, setUpdatingMods] = useState([]); // Array of filenames being updated
   const [loading, setLoading] = useState(true);
   const [loadingPopular, setLoadingPopular] = useState(true);
+  const [searchError, setSearchError] = useState(null);
+  const [popularError, setPopularError] = useState(null);
   const [deleteConfirm, setDeleteConfirm] = useState({ show: false, mod: null });
   const [versionModal, setVersionModal] = useState({ show: false, project: null, updateMod: null });
   const [showAddModal, setShowAddModal] = useState(false);
@@ -24,10 +27,54 @@ function InstanceMods({ instance, onShowConfirm, onShowNotification }) {
   const [applyProgress, setApplyProgress] = useState(0);
   const [applyStatus, setApplyStatus] = useState('');
 
+  const installedSearchRef = useRef(null);
+  const findSearchRef = useRef(null);
+
+  // Pagination states
+  const [popularOffset, setPopularOffset] = useState(0);
+  const [searchOffset, setSearchOffset] = useState(0);
+  const [hasMorePopular, setHasMorePopular] = useState(true);
+  const [hasMoreSearch, setHasMoreSearch] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const observer = useRef();
+
+  const lastElementRef = useCallback(node => {
+    if (loadingMore || searching || loadingPopular) return;
+    if (observer.current) observer.current.disconnect();
+    
+    observer.current = new IntersectionObserver(entries => {
+      if (entries[0].isIntersecting) {
+        const isSearch = searchQuery.trim().length > 0;
+        if (isSearch && hasMoreSearch) {
+          loadMoreSearch();
+        } else if (!isSearch && hasMorePopular) {
+          loadMorePopular();
+        }
+      }
+    });
+    
+    if (node) observer.current.observe(node);
+  }, [loadingMore, searching, loadingPopular, hasMoreSearch, hasMorePopular, searchQuery]);
+
   useEffect(() => {
     loadInstalledMods();
     loadPopularMods();
   }, [instance.id]);
+
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'f') {
+        e.preventDefault();
+        if (activeSubTab === 'installed') {
+          installedSearchRef.current?.focus();
+        } else if (activeSubTab === 'find') {
+          findSearchRef.current?.focus();
+        }
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [activeSubTab]);
 
   // Check if a mod is installed and return the mod object
   const getInstalledMod = (project) => {
@@ -66,6 +113,9 @@ function InstanceMods({ instance, onShowConfirm, onShowNotification }) {
 
   const loadPopularMods = async () => {
     setLoadingPopular(true);
+    setPopularOffset(0);
+    setHasMorePopular(true);
+    setPopularError(null);
     try {
       const results = await invoke('search_modrinth', {
         query: '',
@@ -76,19 +126,50 @@ function InstanceMods({ instance, onShowConfirm, onShowNotification }) {
         offset: 0
       });
       setPopularMods(results.hits || []);
+      setHasMorePopular((results.hits?.length || 0) === 20 && results.total_hits > 20);
+      setPopularOffset(results.hits?.length || 0);
     } catch (error) {
       console.error('Failed to load popular mods:', error);
+      setPopularError(error.toString());
     }
     setLoadingPopular(false);
+  };
+
+  const loadMorePopular = async () => {
+    if (loadingMore || !hasMorePopular) return;
+    setLoadingMore(true);
+    try {
+      const results = await invoke('search_modrinth', {
+        query: '',
+        projectType: 'mod',
+        gameVersion: instance.version_id,
+        loader: instance.mod_loader?.toLowerCase() !== 'vanilla' ? instance.mod_loader?.toLowerCase() : null,
+        limit: 20,
+        offset: popularOffset
+      });
+      const newHits = results.hits || [];
+      setPopularMods(prev => [...prev, ...newHits]);
+      setPopularOffset(prev => prev + newHits.length);
+      setHasMorePopular(newHits.length === 20 && (popularOffset + newHits.length) < results.total_hits);
+    } catch (error) {
+      console.error('Failed to load more popular mods:', error);
+    }
+    setLoadingMore(false);
   };
 
   const handleSearch = async () => {
     if (!searchQuery.trim()) {
       setSearchResults([]);
+      setSearchOffset(0);
+      setHasMoreSearch(false);
+      setSearchError(null);
       return;
     }
 
     setSearching(true);
+    setSearchOffset(0);
+    setHasMoreSearch(true);
+    setSearchError(null);
     try {
       const results = await invoke('search_modrinth', {
         query: searchQuery,
@@ -99,10 +180,35 @@ function InstanceMods({ instance, onShowConfirm, onShowNotification }) {
         offset: 0
       });
       setSearchResults(results.hits || []);
+      setHasMoreSearch((results.hits?.length || 0) === 20 && results.total_hits > 20);
+      setSearchOffset(results.hits?.length || 0);
     } catch (error) {
       console.error('Failed to search:', error);
+      setSearchError(error.toString());
     }
     setSearching(false);
+  };
+
+  const loadMoreSearch = async () => {
+    if (loadingMore || !hasMoreSearch) return;
+    setLoadingMore(true);
+    try {
+      const results = await invoke('search_modrinth', {
+        query: searchQuery,
+        projectType: 'mod',
+        gameVersion: instance.version_id,
+        loader: instance.mod_loader?.toLowerCase() !== 'vanilla' ? instance.mod_loader?.toLowerCase() : null,
+        limit: 20,
+        offset: searchOffset
+      });
+      const newHits = results.hits || [];
+      setSearchResults(prev => [...prev, ...newHits]);
+      setSearchOffset(prev => prev + newHits.length);
+      setHasMoreSearch(newHits.length === 20 && (searchOffset + newHits.length) < results.total_hits);
+    } catch (error) {
+      console.error('Failed to load more results:', error);
+    }
+    setLoadingMore(false);
   };
 
   const handleRequestInstall = async (project, updateMod = null) => {
@@ -192,6 +298,7 @@ function InstanceMods({ instance, onShowConfirm, onShowNotification }) {
         projectId: project.project_id || project.slug,
         versionId: version.id,
         name: project.title,
+        author: project.author,
         iconUrl: project.icon_url,
         versionName: version.version_number
       });
@@ -379,6 +486,7 @@ function InstanceMods({ instance, onShowConfirm, onShowNotification }) {
               projectId: mid,
               versionId: info.id,
               name: project?.title || mod.name || null,
+              author: project?.author || mod.author || null,
               iconUrl: project?.icon_url || mod.icon_url || mod.iconUrl || null,
               versionName: info.name || mod.version_name || mod.versionName
             });
@@ -472,8 +580,15 @@ function InstanceMods({ instance, onShowConfirm, onShowNotification }) {
     return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
   };
 
-  const modrinthMods = installedMods.filter(m => m.provider === 'Modrinth').sort((a, b) => (a.name || a.filename).localeCompare(b.name || b.filename));
-  const manualMods = installedMods.filter(m => m.provider !== 'Modrinth').sort((a, b) => (a.name || a.filename).localeCompare(b.name || b.filename));
+  const filteredInstalledMods = installedMods.filter(m => {
+    if (!installedSearchQuery.trim()) return true;
+    const query = installedSearchQuery.toLowerCase();
+    return (m.name || '').toLowerCase().includes(query) || 
+           (m.filename || '').toLowerCase().includes(query);
+  });
+
+  const modrinthMods = filteredInstalledMods.filter(m => m.provider === 'Modrinth').sort((a, b) => (a.name || a.filename).localeCompare(b.name || b.filename));
+  const manualMods = filteredInstalledMods.filter(m => m.provider !== 'Modrinth').sort((a, b) => (a.name || a.filename).localeCompare(b.name || b.filename));
 
   const getLoaderBadges = (categories) => {
     if (!categories) return [];
@@ -500,7 +615,7 @@ function InstanceMods({ instance, onShowConfirm, onShowNotification }) {
 
   return (
     <div className="mods-tab">
-      <div className="sub-tabs-row">
+      <div className={`sub-tabs-row ${isScrolled ? 'scrolled' : ''}`}>
         <div className="sub-tabs">
           <button
             className={`sub-tab ${activeSubTab === 'installed' ? 'active' : ''}`}
@@ -535,11 +650,38 @@ function InstanceMods({ instance, onShowConfirm, onShowNotification }) {
 
       {activeSubTab === 'installed' ? (
         <div className="installed-section">
+          {installedMods.length > 0 && (
+            <div className="search-input-wrapper" style={{ position: 'relative', marginBottom: '0' }}>
+              <input
+                ref={installedSearchRef}
+                type="text"
+                placeholder="Search installed mods... (Ctrl+F)"
+                value={installedSearchQuery}
+                onChange={(e) => setInstalledSearchQuery(e.target.value)}
+                style={{ paddingRight: '40px' }}
+              />
+              {installedSearchQuery && (
+                <button 
+                  className="clear-search-btn" 
+                  onClick={() => setInstalledSearchQuery('')}
+                  style={{ position: 'absolute', right: '12px', top: '50%', transform: 'translateY(-50%)' }}
+                >
+                  ✕
+                </button>
+              )}
+            </div>
+          )}
+          
           {loading ? (
             <p>Loading...</p>
           ) : installedMods.length === 0 ? (
             <div className="empty-state">
               <p>No mods installed. Go to "Find Mods" to browse and install mods.</p>
+            </div>
+          ) : filteredInstalledMods.length === 0 ? (
+            <div className="empty-state">
+              <p>No mods matching "{installedSearchQuery}"</p>
+              <button className="text-btn" onClick={() => setInstalledSearchQuery('')}>Clear search</button>
             </div>
           ) : (
             <div className="mods-container">
@@ -575,13 +717,13 @@ function InstanceMods({ instance, onShowConfirm, onShowNotification }) {
                             ) : (
                               <div className="mod-icon-placeholder">📦</div>
                             )}
-                            <div className="item-info">
+                            <div className="item-info clickable" onClick={() => handleRequestInstall(mod)}>
                               <div className="item-title-row">
                                 <h4>{mod.name || mod.filename}</h4>
                                 {mod.version && <span className="mod-version-tag">v{mod.version}</span>}
                               </div>
                               <div className="item-meta-row">
-                                <span className="mod-provider">{mod.provider}</span>
+                                <span className="mod-author-small">by {mod.author || 'Unknown'}</span>
                                 <span className="mod-separator">•</span>
                                 <span className="mod-size">{formatFileSize(mod.size)}</span>
                               </div>
@@ -670,6 +812,7 @@ function InstanceMods({ instance, onShowConfirm, onShowNotification }) {
         <div className="find-mods-section">
           <div className="search-input-wrapper">
             <input
+              ref={findSearchRef}
               type="text"
               placeholder="Search Modrinth for mods..."
               value={searchQuery}
@@ -691,18 +834,33 @@ function InstanceMods({ instance, onShowConfirm, onShowNotification }) {
 
           {(searching || loadingPopular) ? (
             <div className="loading-mods">Loading...</div>
+          ) : (searchError || popularError) ? (
+            <div className="empty-state error-state">
+              <p style={{ color: '#ef4444' }}>⚠️ Failed to fetch mods</p>
+              <p style={{ fontSize: '12px', color: '#888', marginTop: '8px' }}>{searchError || popularError}</p>
+              <button 
+                onClick={() => searchQuery.trim() ? handleSearch() : loadPopularMods()}
+                style={{ marginTop: '12px', padding: '8px 16px', background: '#333', border: '1px solid #555', borderRadius: '6px', color: '#fff', cursor: 'pointer' }}
+              >
+                Retry
+              </button>
+            </div>
           ) : displayMods.length === 0 ? (
             <div className="empty-state">
-              <p>{searchQuery.trim() ? 'No mods found.' : 'No popular mods available for this version.'}</p>
+              <p>{searchQuery.trim() ? `No mods found for "${searchQuery}"` : 'No popular mods available for this version.'}</p>
             </div>
           ) : (
             <div className="search-results">
-              {displayMods.map((project) => {
+              {displayMods.map((project, index) => {
                 const installedMod = getInstalledMod(project);
                 const isDownloading = installing === project.slug;
 
                 return (
-                  <div key={project.slug} className={`search-result-card ${isDownloading ? 'mod-updating' : ''}`}>
+                  <div 
+                    key={`${project.slug}-${index}`} 
+                    className={`search-result-card ${isDownloading ? 'mod-updating' : ''}`}
+                    ref={index === displayMods.length - 1 ? lastElementRef : null}
+                  >
                     {isDownloading && (
                       <div className="mod-updating-overlay">
                         <RefreshCcw className="spin-icon" size={20} />
@@ -750,8 +908,12 @@ function InstanceMods({ instance, onShowConfirm, onShowNotification }) {
                     </div>
                   </div>
                 );
-              })}
-            </div>
+              })}              {loadingMore && (
+                <div className="loading-more">
+                  <Loader2 className="spin-icon" size={24} />
+                  <span>Loading more mods...</span>
+                </div>
+              )}            </div>
           )}
         </div>
       )}

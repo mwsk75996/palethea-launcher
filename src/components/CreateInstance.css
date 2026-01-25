@@ -1,3 +1,12 @@
+.modpack-card.loading-card {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px dashed var(--border);
+  min-height: 120px;
+}
+
 .create-page-container {
   display: flex;
   width: 100%;
@@ -26,16 +35,22 @@
 
 .create-header,
 .modal-header {
-  padding: 20px 24px;
+  padding: 12px 24px;
   display: flex;
   justify-content: space-between;
   align-items: center;
   border-bottom: 1px solid var(--border);
 }
 
+.create-header h2,
+.modal-header h2 {
+  font-size: 1.25rem;
+  margin: 0;
+}
+
 .create-steps {
   display: flex;
-  padding: 12px 24px;
+  padding: 8px 24px;
   gap: 20px;
   background: rgba(255, 255, 255, 0.02);
   border-bottom: 1px solid var(--border);
@@ -1052,4 +1067,172 @@
   color: var(--muted);
   margin-top: 8px;
   opacity: 0.7;
+}
+
+/* Java Selection Step */
+.java-step {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.java-recommendation {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  background: rgba(var(--accent-rgb), 0.05);
+  border: 1px solid rgba(var(--accent-rgb), 0.1);
+  padding: 24px;
+  border-radius: 12px;
+}
+
+.recommendation-icon {
+  font-size: 32px;
+  background: rgba(var(--accent-rgb), 0.1);
+  width: 64px;
+  height: 64px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 16px;
+}
+
+.recommendation-text h3 {
+  margin: 0 0 4px 0;
+  font-size: 18px;
+  color: var(--text);
+}
+
+.recommendation-text p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.recommendation-text strong {
+  color: var(--accent);
+}
+
+.java-selector-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 16px;
+}
+
+.java-option-card {
+  background: var(--surface-hover);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 20px;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.java-option-card:hover {
+  background: rgba(255, 255, 255, 0.05);
+  border-color: var(--muted);
+  transform: translateY(-2px);
+}
+
+.java-option-card.active {
+  background: rgba(var(--accent-rgb), 0.08);
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
+}
+
+.java-option-card.recommended {
+  border-left: 4px solid var(--accent);
+}
+
+.recommended-badge {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  background: var(--accent);
+  color: white;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.java-version-name {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.java-vendor {
+  font-size: 12px;
+  color: var(--muted);
+  margin-left: 6px;
+}
+
+.java-status {
+  margin-top: 4px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--accent);
+}
+
+.java-download-prompt {
+  display: flex;
+  gap: 16px;
+  background: rgba(255, 166, 0, 0.05);
+  border: 1px solid rgba(255, 166, 0, 0.2);
+  padding: 20px;
+  border-radius: 12px;
+  opacity: 0;
+  transform: translateY(10px);
+  transition: all 0.3s ease;
+}
+
+.java-download-prompt.active {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.prompt-icon {
+  width: 40px;
+  height: 40px;
+  background: rgba(255, 166, 0, 0.1);
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #ffa600;
+  font-size: 20px;
+  flex-shrink: 0;
+}
+
+.prompt-content h4 {
+  margin: 0 0 4px 0;
+  color: #ffa600;
+  font-size: 14px;
+}
+
+.prompt-content p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.mini-spinner {
+  width: 14px;
+  height: 14px;
+  border: 2px solid rgba(var(--accent-rgb), 0.2);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: palethea-spin 0.8s linear infinite;
+}
+
+@keyframes palethea-spin {
+  to { transform: rotate(360deg); }
 }

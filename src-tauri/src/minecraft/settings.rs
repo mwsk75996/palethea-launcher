@@ -31,7 +31,7 @@ impl Default for LauncherSettings {
         LauncherSettings {
             java_path: None,
             java_args: None,
-            max_memory: Some(2048),
+            max_memory: Some(4096),
             enable_console: Some(false),
             account_preview_mode: Some("simple".to_string()),
             show_welcome: Some(true),

@@ -70,7 +70,7 @@ impl Instance {
             java_path: None,
             jvm_args: None,
             memory_min: Some(512),
-            memory_max: Some(2048),
+            memory_max: Some(4096),
             game_directory: None,
             resolution_width: None,
             resolution_height: None,

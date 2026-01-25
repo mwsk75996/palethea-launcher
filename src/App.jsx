@@ -3,6 +3,8 @@ import { invoke } from '@tauri-apps/api/core';
 import { open } from '@tauri-apps/plugin-shell';
 import { save } from '@tauri-apps/plugin-dialog';
 import { listen } from '@tauri-apps/api/event';
+import { WebviewWindow } from '@tauri-apps/api/webviewWindow';
+import { getCurrentWindow } from '@tauri-apps/api/window';
 import Sidebar from './components/Sidebar';
 import InstanceList from './components/InstanceList';
 import InstanceEditor from './components/InstanceEditor';
@@ -16,6 +18,7 @@ import ConfirmModal from './components/ConfirmModal';
 import Updates from './components/Updates';
 import Console from './components/Console';
 import AccountManagerModal from './components/AccountManagerModal';
+import EditChoiceModal from './components/EditChoiceModal';
 import './App.css';
 
 function App() {
@@ -27,6 +30,7 @@ function App() {
   const [loadingStatus, setLoadingStatus] = useState('');
   const [loadingProgress, setLoadingProgress] = useState(0);
   const [loadingBytes, setLoadingBytes] = useState({ current: 0, total: 0 });
+  const [loadingCount, setLoadingCount] = useState({ current: 0, total: 0 });
   const [notification, setNotification] = useState(null);
   const [editingInstanceId, setEditingInstanceId] = useState(null);
   const [contextMenu, setContextMenu] = useState(null);
@@ -42,6 +46,23 @@ function App() {
   const [launcherSettings, setLauncherSettings] = useState(null);
   const [showAccountManager, setShowAccountManager] = useState(false);
   const [isInitializing, setIsInitializing] = useState(true);
+  const [openEditors, setOpenEditors] = useState([]);
+  const [showEditChoiceModal, setShowEditChoiceModal] = useState(null); // { instanceId } or null
+
+  // Check if we are running in a pop-out window
+  const urlParams = new URLSearchParams(window.location.search);
+  const popoutMode = urlParams.get('popout');
+  const popoutInstanceId = urlParams.get('instanceId');
+
+  // Show window once initialized
+  useEffect(() => {
+    if (!isInitializing && popoutMode) {
+      // Small timeout to ensure the DOM is rendered before showing the window
+      setTimeout(() => {
+        getCurrentWindow().show().catch(console.error);
+      }, 100);
+    }
+  }, [isInitializing, popoutMode]);
 
   // Apply accent color from settings
   useEffect(() => {
@@ -282,7 +303,7 @@ function App() {
 
     // Listen for download progress events
     const unlistenProgress = listen('download-progress', (event) => {
-      const { stage, percentage, total_bytes, downloaded_bytes } = event.payload;
+      const { stage, percentage, total_bytes, downloaded_bytes, current, total } = event.payload;
       const displayPercentage = Number(percentage).toFixed(1);
 
       setLogs(prev => [...prev.slice(-499), {
@@ -293,10 +314,17 @@ function App() {
       }]);
       setLoadingStatus(stage);
       setLoadingProgress(percentage);
+      
       if (total_bytes !== undefined && downloaded_bytes !== undefined) {
         setLoadingBytes({ current: downloaded_bytes || 0, total: total_bytes || 0 });
       } else {
         setLoadingBytes({ current: 0, total: 0 });
+      }
+
+      if (current !== undefined && total !== undefined && total > 0) {
+        setLoadingCount({ current, total });
+      } else {
+        setLoadingCount({ current: 0, total: 0 });
       }
     });
 
@@ -439,6 +467,8 @@ function App() {
           } finally {
             setIsLoading(false);
             setLoadingStatus('');
+            setLoadingProgress(0);
+            setLoadingCount({ current: 0, total: 0 });
           }
         }
         break;
@@ -469,9 +499,13 @@ function App() {
       showNotification(`Cloned "${instance.name}" successfully!`, 'success');
     } catch (error) {
       showNotification(`Failed to clone instance: ${error}`, 'error');
+    } finally {
+      setIsLoading(false);
+      setLoadingStatus('');
+      setLoadingProgress(0);
+      setLoadingCount({ current: 0, total: 0 });
+      setLoadingBytes({ current: 0, total: 0 });
     }
-    setIsLoading(false);
-    setLoadingStatus('');
   };
 
   const showNotification = (message, type = 'info') => {
@@ -479,10 +513,25 @@ function App() {
     setTimeout(() => setNotification(null), 5000);
   };
 
-  const handleCreateInstance = async (name, versionId, modLoader = 'vanilla', modLoaderVersion = null) => {
+  const handleCreateInstance = async (name, versionId, modLoader = 'vanilla', modLoaderVersion = null, javaVersion = null) => {
     setIsLoading(true);
     setLoadingProgress(0);
+    setLoadingCount({ current: 0, total: 0 });
+    setLoadingBytes({ current: 0, total: 0 });
     try {
+      // Helper to set Java version for the new instance
+      const setupJava = async (instanceId, version) => {
+        if (!version) return;
+        try {
+          const javaPath = await invoke('download_java_global', { version: parseInt(version) });
+          const instance = await invoke('get_instance_details', { instanceId });
+          instance.java_path = javaPath;
+          await invoke('update_instance', { instance });
+        } catch (e) {
+          console.error("Failed to setup Java for instance:", e);
+        }
+      };
+
       // ----------
       // Import from .zip handler
       // Description: Imports an instance from a shared .zip file
@@ -497,6 +546,8 @@ function App() {
           customName: name || null
         });
 
+        await setupJava(importedInstance.id, javaVersion);
+
         setLoadingProgress(60);
         setLoadingStatus(`Downloading Minecraft ${importedInstance.version_id}...`);
         await invoke('download_version', { versionId: importedInstance.version_id });
@@ -505,9 +556,6 @@ function App() {
         await loadInstances();
         setActiveTab('instances');
         showNotification(`Imported instance "${importedInstance.name}"!`, 'success');
-        setIsLoading(false);
-        setLoadingStatus('');
-        setLoadingProgress(0);
         return;
       }
 
@@ -562,6 +610,8 @@ function App() {
           versionId: mcVersion 
         });
 
+        await setupJava(newInstance.id, javaVersion);
+
         // 2. Download Minecraft
         setLoadingStatus(`Downloading Minecraft ${mcVersion}...`);
         setLoadingProgress(10);
@@ -579,61 +629,72 @@ function App() {
             await invoke('install_neoforge', { instanceId: newInstance.id, loaderVersion: loader_version });
           }
         }
+        
+        // 4. Download Mods, Resource Packs, Shaders, etc.
+        // ... (existing code for share-code continues)
 
         // 4. Download Everything
         const totalItems = mods.length + resourcepacks.length + shaders.length + datapacks.length;
         let completedItems = 0;
 
-        // Helper to process items
+        // Helper to process items with parallel concurrency
         const processItems = async (items, type, worldName = null) => {
-          for (const item of items) {
-            const mid = item.project_id || item.projectId;
-            const vid = item.version_id || item.versionId;
-            setLoadingStatus(`Installing ${type} ${++completedItems}/${totalItems}...`);
-            try {
-              let info;
-              if (vid) {
-                info = await invoke('get_modrinth_version', { versionId: vid });
-              } else {
-                const versions = await invoke('get_modrinth_versions', { 
-                  projectId: mid,
-                  gameVersion: mcVersion,
-                  loader: type === 'mod' ? (loader === 'vanilla' ? null : loader) : null
-                });
-                info = versions.length > 0 ? versions[0] : null;
-              }
-
-              if (info) {
-                let project = projectMap[mid];
-                
-                // Fallback for individual fetch if bulk failed or item was slug
-                if (!project) {
-                  try {
-                    project = await invoke('get_modrinth_project', { projectId: mid });
-                  } catch (e) {
-                    console.warn(`Failed to fetch project metadata for ${mid}:`, e);
-                  }
+          const CONCURRENCY = 10;
+          for (let i = 0; i < items.length; i += CONCURRENCY) {
+            const chunk = items.slice(i, i + CONCURRENCY);
+            
+            await Promise.all(chunk.map(async (item) => {
+              const mid = item.project_id || item.projectId;
+              const vid = item.version_id || item.versionId;
+              
+              try {
+                let info;
+                if (vid) {
+                  info = await invoke('get_modrinth_version', { versionId: vid });
+                } else {
+                  const versions = await invoke('get_modrinth_versions', { 
+                    projectId: mid,
+                    gameVersion: mcVersion,
+                    loader: type === 'mod' ? (loader === 'vanilla' ? null : loader) : null
+                  });
+                  info = versions.length > 0 ? versions[0] : null;
                 }
 
-                const file = info.files.find(f => f.primary) || info.files[0];
-                
-                await invoke('install_modrinth_file', {
-                  instanceId: newInstance.id,
-                  fileUrl: file.url,
-                  filename: file.filename,
-                  fileType: type,
-                  projectId: mid,
-                  versionId: info.id,
-                  name: project?.title || item.name || null,
-                  iconUrl: project?.icon_url || item.icon_url || item.iconUrl || null,
-                  versionName: info.name || item.version_name || item.versionName,
-                  worldName: worldName
-                });
+                if (info) {
+                  let project = projectMap[mid];
+                  
+                  if (!project) {
+                    try {
+                      project = await invoke('get_modrinth_project', { projectId: mid });
+                    } catch (e) {
+                      console.warn(`Failed to fetch project metadata for ${mid}:`, e);
+                    }
+                  }
+
+                  const file = info.files.find(f => f.primary) || info.files[0];
+                  
+                  await invoke('install_modrinth_file', {
+                    instanceId: newInstance.id,
+                    fileUrl: file.url,
+                    filename: file.filename,
+                    fileType: type,
+                    projectId: mid,
+                    versionId: info.id,
+                    name: project?.title || item.name || null,
+                    author: project?.author || item.author || null,
+                    iconUrl: project?.icon_url || item.icon_url || item.iconUrl || null,
+                    versionName: info.name || item.version_name || item.versionName,
+                    worldName: worldName
+                  });
+                }
+              } catch (e) {
+                console.warn(`Failed to install ${type} ${mid}:`, e);
               }
-            } catch (e) {
-              console.warn(`Failed to install ${type} ${mid}:`, e);
-            }
-            setLoadingProgress(20 + (completedItems / totalItems) * 75);
+              
+              completedItems++;
+              setLoadingStatus(`Installing ${type} ${completedItems}/${totalItems}...`);
+              setLoadingProgress(20 + (completedItems / totalItems) * 75);
+            }));
           }
         };
 
@@ -650,9 +711,6 @@ function App() {
         await loadInstances();
         setActiveTab('instances');
         showNotification(`Share code applied! Instance "${name || originalName}" created.`, 'success');
-        setIsLoading(false);
-        setLoadingStatus('');
-        setLoadingProgress(0);
         return;
       }
 
@@ -676,6 +734,8 @@ function App() {
           }
         }
 
+        await setupJava(newInstance.id, javaVersion);
+
         setLoadingStatus(`Installing modpack ${modpackName}...`);
         await invoke('install_modpack', {
           instanceId: newInstance.id,
@@ -692,6 +752,8 @@ function App() {
         setLoadingStatus('Creating instance...');
         setLoadingProgress(5);
         const newInstance = await invoke('create_instance', { name, versionId });
+
+        await setupJava(newInstance.id, javaVersion);
 
         setLoadingStatus(`Downloading Minecraft ${versionId}...`);
         await invoke('download_version', { versionId });
@@ -773,10 +835,13 @@ function App() {
       showNotification(`Created instance "${name}"!`, 'success');
     } catch (error) {
       showNotification(`Failed to create instance: ${error}`, 'error');
+    } finally {
+      setIsLoading(false);
+      setLoadingStatus('');
+      setLoadingProgress(0);
+      setLoadingCount({ current: 0, total: 0 });
+      setLoadingBytes({ current: 0, total: 0 });
     }
-    setIsLoading(false);
-    setLoadingStatus('');
-    setLoadingProgress(0);
   };
 
   const performDeleteInstance = async (instanceId) => {
@@ -824,8 +889,13 @@ function App() {
       loadRunningInstances(); // Update running instances immediately
     } catch (error) {
       showNotification(`Failed to launch: ${error}`, 'error');
+    } finally {
+      setIsLoading(false);
+      setLoadingStatus('');
+      setLoadingProgress(0);
+      setLoadingCount({ current: 0, total: 0 });
+      setLoadingBytes({ current: 0, total: 0 });
     }
-    setIsLoading(false);
   };
 
   const handleStopInstance = async (instanceId) => {
@@ -956,8 +1026,75 @@ function App() {
     }
   };
 
+  const handleEditInstanceChoice = async (mode, dontAskAgain) => {
+    const { instanceId } = showEditChoiceModal;
+    setShowEditChoiceModal(null);
+
+    if (dontAskAgain) {
+      const updated = {
+        ...launcherSettings,
+        edit_mode_preference: mode
+      };
+      await invoke('save_settings', { newSettings: updated });
+      loadLauncherSettings();
+    }
+
+    if (mode === 'pop-out') {
+      handleOpenPopoutEditor(instanceId);
+    } else {
+      setEditingInstanceId(instanceId);
+    }
+  };
+
   const handleEditInstance = (instanceId) => {
-    setEditingInstanceId(instanceId);
+    const preference = launcherSettings?.edit_mode_preference || 'ask';
+
+    if (preference === 'ask') {
+      setShowEditChoiceModal({ instanceId });
+    } else if (preference === 'pop-out') {
+      handleOpenPopoutEditor(instanceId);
+    } else {
+      setEditingInstanceId(instanceId);
+    }
+  };
+
+  const handleOpenPopoutEditor = async (instanceId) => {
+    const windowLabel = `editor-${instanceId}`;
+    
+    // Check if already open
+    if (openEditors.includes(instanceId)) {
+      const win = await WebviewWindow.getByLabel(windowLabel);
+      if (win) {
+        await win.setFocus();
+        return;
+      }
+    }
+
+    try {
+      const editorWindow = new WebviewWindow(windowLabel, {
+        url: `/?popout=editor&instanceId=${instanceId}`,
+        title: `Editing Instance - ${instances.find(i => i.id === instanceId)?.name || instanceId}`,
+        width: 1000,
+        height: 700,
+        minWidth: 800,
+        minHeight: 600,
+        decorations: true,
+        transparent: false,
+        visible: false, // Start hidden to prevent white flash
+      });
+
+      setOpenEditors(prev => [...prev, instanceId]);
+
+      // Handle window closure to clean up state
+      await editorWindow.onCloseRequested(() => {
+        setOpenEditors(prev => prev.filter(id => id !== instanceId));
+        loadInstances();
+      });
+
+    } catch (error) {
+      console.error('Failed to create window:', error);
+      showNotification('Failed to open pop-out editor', 'error');
+    }
   };
 
   const handleCloseEditor = () => {
@@ -997,6 +1134,7 @@ function App() {
             onContextMenu={handleInstanceContextMenu}
             isLoading={isLoading}
             runningInstances={runningInstances}
+            openEditors={openEditors}
           />
         );
       case 'create':
@@ -1053,6 +1191,54 @@ function App() {
         return null;
     }
   };
+
+  if (popoutMode === 'editor' && popoutInstanceId) {
+    return (
+      <div className={`app popout-window bg-${launcherSettings?.background_style || 'gradient'}`} style={{ height: '100vh', width: '100vw' }}>
+        <main className="main-content" style={{ padding: 0 }}>
+          <InstanceEditor
+            instanceId={popoutInstanceId}
+            isPopout={true}
+            onClose={async () => {
+              console.log('Closing pop-out window...');
+              try {
+                const { getCurrentWindow } = await import('@tauri-apps/api/window');
+                await getCurrentWindow().close();
+              } catch (e) {
+                console.error('Failed to close window:', e);
+                window.close(); // Fallback
+              }
+            }}
+            onUpdate={loadInstances}
+            onLaunch={handleLaunchInstance}
+            onStop={handleStopInstance}
+            runningInstances={runningInstances}
+            onShowNotification={showNotification}
+            onDelete={async (id) => {
+              await performDeleteInstance(id);
+              const { getCurrentWindow } = await import('@tauri-apps/api/window');
+              getCurrentWindow().close();
+            }}
+          />
+        </main>
+        
+        {notification && (
+          <div className={`notification notification-${notification.type}`}>
+            {notification.message}
+          </div>
+        )}
+
+        {isInitializing && (
+          <div className="app-initializing">
+            <div className="init-spinner-container">
+              <div className="init-spinner"></div>
+              <span className="init-text">Loading Editor</span>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div className={`app bg-${launcherSettings?.background_style || 'gradient'}`}>
@@ -1168,6 +1354,11 @@ function App() {
                 {(loadingBytes.current / 1024 / 1024).toFixed(1)} MB / {(loadingBytes.total / 1024 / 1024).toFixed(1)} MB
               </p>
             )}
+              {loadingCount.total > 0 && (
+                <p className="loading-count">
+                  {loadingCount.current} / {loadingCount.total} files
+                </p>
+              )}
           </div>
         </div>
       )}
@@ -1219,11 +1410,18 @@ function App() {
         skinRefreshKey={skinRefreshKey}
       />
 
+      {showEditChoiceModal && (
+        <EditChoiceModal
+          onChoose={handleEditInstanceChoice}
+          onCancel={() => setShowEditChoiceModal(null)}
+        />
+      )}
+
       {isInitializing && (
         <div className="app-initializing">
           <div className="init-spinner-container">
             <div className="init-spinner"></div>
-            <span className="init-text">Initializing Launcher</span>
+            <span className="init-text">{popoutMode ? 'Loading Editor' : 'Initializing Launcher'}</span>
           </div>
         </div>
       )}

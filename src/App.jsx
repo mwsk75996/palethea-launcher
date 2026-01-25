@@ -1108,6 +1108,11 @@ function App() {
         <InstanceEditor
           instanceId={editingInstanceId}
           onClose={handleCloseEditor}
+          onPopout={() => {
+            const id = editingInstanceId;
+            handleCloseEditor();
+            handleOpenPopoutEditor(id);
+          }}
           onUpdate={loadInstances}
           onLaunch={handleLaunchInstance}
           onStop={handleStopInstance}

@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { ArrowLeft, Play, Box, Cpu, FolderOpen, Square, X } from 'lucide-react';
+import { ArrowLeft, Play, Box, Cpu, FolderOpen, Square, X, ExternalLink } from 'lucide-react';
 import './InstanceEditor.css';
 import InstanceSettings from './InstanceSettings';
 import InstanceMods from './InstanceMods';
@@ -11,7 +11,17 @@ import InstanceScreenshots from './InstanceScreenshots';
 import InstanceConsole from './InstanceConsole';
 import ConfirmModal from './ConfirmModal';
 
-function InstanceEditor({ instanceId, onClose, onUpdate, onLaunch, onStop, runningInstances, onDelete, onShowNotification }) {
+function InstanceEditor({ 
+  instanceId, 
+  onClose, 
+  onUpdate, 
+  onLaunch, 
+  onStop, 
+  runningInstances, 
+  onDelete, 
+  onShowNotification,
+  onPopout
+}) {
   const [instance, setInstance] = useState(null);
   const [activeTab, setActiveTab] = useState('settings');
   const [loading, setLoading] = useState(true);
@@ -200,25 +210,33 @@ function InstanceEditor({ instanceId, onClose, onUpdate, onLaunch, onStop, runni
             )}
           </div>
         </div>
-        <button
-          className={`launch-btn-large ${isRunning ? 'stop-mode' : ''}`}
-          onClick={handleLaunch}
-          disabled={launching}
-        >
-          {launching ? (
-            'Launching...'
-          ) : isRunning ? (
-            <>
-              <Square size={18} fill="currentColor" />
-              <span>Stop</span>
-            </>
-          ) : (
-            <>
-              <Play size={18} fill="currentColor" />
-              <span>Launch</span>
-            </>
+        <div className="header-right">
+          <button
+            className={`launch-btn-large ${isRunning ? 'stop-mode' : ''}`}
+            onClick={handleLaunch}
+            disabled={launching}
+          >
+            {launching ? (
+              'Launching...'
+            ) : isRunning ? (
+              <>
+                <Square size={18} fill="currentColor" />
+                <span>Stop</span>
+              </>
+            ) : (
+              <>
+                <Play size={18} fill="currentColor" />
+                <span>Launch</span>
+              </>
+            )}
+          </button>
+          {!isPopout && onPopout && (
+            <button className="popout-btn" onClick={onPopout} title="Open in Pop-out Window">
+              <ExternalLink size={18} />
+              <span>Pop Out</span>
+            </button>
           )}
-        </button>
+        </div>
       </div>
 
       <div className="editor-tabs">

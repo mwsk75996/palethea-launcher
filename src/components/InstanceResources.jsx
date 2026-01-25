@@ -471,7 +471,7 @@ function InstanceResources({ instance, onShowNotification, isScrolled }) {
                             ) : (
                               <div className="mod-icon-placeholder">📦</div>
                             )}
-                            <div className="item-info">
+                            <div className="item-info clickable" onClick={() => handleRequestInstall({ project_id: rp.project_id, title: rp.name, slug: rp.project_id, icon_url: rp.icon_url }, rp)}>
                               <div className="item-title-row">
                                 <h4>{rp.name}</h4>
                                 {rp.version && <span className="mod-version-tag">v{rp.version}</span>}
@@ -579,7 +579,7 @@ function InstanceResources({ instance, onShowNotification, isScrolled }) {
                             ) : (
                               <div className="mod-icon-placeholder">📦</div>
                             )}
-                            <div className="item-info">
+                            <div className="item-info clickable" onClick={() => handleRequestInstall({ project_id: sp.project_id, title: sp.name, slug: sp.project_id, icon_url: sp.icon_url, project_type: 'shader' }, sp)}>
                               <div className="item-title-row">
                                 <h4>{sp.name}</h4>
                                 {sp.version && <span className="mod-version-tag">v{sp.version}</span>}

@@ -380,7 +380,7 @@ function WorldDatapacks({ instance, world, onShowNotification, onBack, isScrolle
                                                         ) : (
                                                             <div className="mod-icon-placeholder">📦</div>
                                                         )}
-                                                        <div className="item-info">
+                                                        <div className="item-info clickable" onClick={() => handleRequestInstall({ project_id: dp.project_id, title: dp.name, slug: dp.project_id, icon_url: dp.icon_url, project_type: 'datapack' }, dp)}>
                                                             <div className="item-title-row">
                                                                 <h4>{dp.name || dp.filename}</h4>
                                                                 {dp.version && <span className="mod-version-tag">v{dp.version}</span>}

@@ -14,7 +14,7 @@ function InstanceMods({ instance, onShowConfirm, onShowNotification, isScrolled 
   const [installedMods, setInstalledMods] = useState([]);
   const [searching, setSearching] = useState(false);
   const [installing, setInstalling] = useState(null);
-  const [updatingMods, setUpdatingMods] = useState([]); // Array of filenames being updated
+  const [updatingMods, setUpdatingMods] = useState([]); // Array of IDs (filename/project_id) being updated
   const [loading, setLoading] = useState(true);
   const [loadingPopular, setLoadingPopular] = useState(true);
   const [searchError, setSearchError] = useState(null);
@@ -218,7 +218,7 @@ function InstanceMods({ instance, onShowConfirm, onShowNotification, isScrolled 
   const handleInstall = async (project, selectedVersion = null, skipDependencyCheck = false, updateMod = null) => {
     setInstalling(project.slug);
     if (updateMod) {
-      setUpdatingMods(prev => [...prev, updateMod.filename]);
+      setUpdatingMods(prev => [...prev, updateMod.project_id || updateMod.filename]);
     }
 
     try {
@@ -322,7 +322,7 @@ function InstanceMods({ instance, onShowConfirm, onShowNotification, isScrolled 
     } finally {
       setInstalling(null);
       if (updateMod) {
-        setUpdatingMods(prev => prev.filter(f => f !== updateMod.filename));
+        setUpdatingMods(prev => prev.filter(f => f !== (updateMod.project_id || updateMod.filename)));
       }
     }
   };
@@ -697,7 +697,7 @@ function InstanceMods({ instance, onShowConfirm, onShowNotification, isScrolled 
                   </div>
                   <div className="installed-list">
                     {modrinthMods.map((mod) => {
-                      const isUpdating = updatingMods.includes(mod.filename);
+                      const isUpdating = updatingMods.includes(mod.project_id || mod.filename);
                       return (
                         <div key={mod.filename} className={`installed-item ${!mod.enabled ? 'disabled' : ''} ${isUpdating ? 'mod-updating' : ''}`}>
                           {isUpdating && (
@@ -717,13 +717,13 @@ function InstanceMods({ instance, onShowConfirm, onShowNotification, isScrolled 
                             ) : (
                               <div className="mod-icon-placeholder">📦</div>
                             )}
-                            <div className="item-info clickable" onClick={() => handleRequestInstall(mod)}>
+                            <div className="item-info clickable" onClick={() => handleCheckUpdate(mod)}>
                               <div className="item-title-row">
                                 <h4>{mod.name || mod.filename}</h4>
                                 {mod.version && <span className="mod-version-tag">v{mod.version}</span>}
                               </div>
                               <div className="item-meta-row">
-                                <span className="mod-author-small">by {mod.author || 'Unknown'}</span>
+                                <span className="mod-provider">{mod.provider}</span>
                                 <span className="mod-separator">•</span>
                                 <span className="mod-size">{formatFileSize(mod.size)}</span>
                               </div>
@@ -762,7 +762,7 @@ function InstanceMods({ instance, onShowConfirm, onShowNotification, isScrolled 
                   </div>
                   <div className="installed-list">
                     {manualMods.map((mod) => {
-                      const isUpdating = updatingMods.includes(mod.filename);
+                      const isUpdating = updatingMods.includes(mod.project_id || mod.filename);
                       return (
                         <div key={mod.filename} className={`installed-item ${!mod.enabled ? 'disabled' : ''} ${isUpdating ? 'mod-updating' : ''}`}>
                           {isUpdating && (

@@ -20,6 +20,7 @@ pub struct LauncherSettings {
     pub update_channel: Option<String>,
     pub accent_color: Option<String>,
     pub background_style: Option<String>,
+    pub edit_mode_preference: Option<String>,
 }
 
 fn default_update_channel() -> Option<String> {
@@ -38,6 +39,7 @@ impl Default for LauncherSettings {
             update_channel: Some("stable".to_string()),
             accent_color: Some("#E89C88".to_string()),
             background_style: Some("gradient".to_string()),
+            edit_mode_preference: Some("ask".to_string()),
         }
     }
 }

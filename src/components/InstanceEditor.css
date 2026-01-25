@@ -26,7 +26,14 @@
   gap: 8px;
 }
 
-.back-btn, .folder-btn {
+.header-right {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: stretch;
+}
+
+.back-btn, .folder-btn, .popout-btn {
   background: var(--surface);
   color: var(--text-secondary);
   border: 1px solid var(--border);
@@ -39,10 +46,23 @@
   align-items: center;
   gap: 8px;
   transition: all 0.2s ease;
+}
+
+.back-btn, .folder-btn {
   width: 100px; /* Fixed width to ensure they match */
 }
 
-.back-btn:hover, .folder-btn:hover {
+.popout-btn {
+  justify-content: center;
+  padding: 10px 16px;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.popout-btn:hover {
+  background: rgba(255, 255, 255, 0.08) !important;
+}
+
+.back-btn:hover, .folder-btn:hover, .popout-btn:hover {
   background: var(--surface-hover);
   color: var(--foreground);
   border-color: var(--accent);

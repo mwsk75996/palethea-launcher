@@ -29,7 +29,7 @@ html, body, #root {
   filter: blur(50px);
   opacity: 0.04;
   pointer-events: none;
-  z-index: -1; /* Keep behind content but above background */
+  z-index: 1; /* Keep behind content but above background */
 }
 
 .app.bg-dynamic::before {

@@ -81,8 +81,13 @@ function InstanceEditor({
       await invoke('update_instance', { instance: updatedInstance });
       setInstance(updatedInstance);
       if (onUpdate) onUpdate();
+      return true;
     } catch (error) {
       console.error('Failed to update instance:', error);
+      if (onShowNotification) {
+        onShowNotification(`Failed to update instance: ${error}`, 'error');
+      }
+      return false;
     }
   };
 

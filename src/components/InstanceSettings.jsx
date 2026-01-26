@@ -5,7 +5,7 @@ import { join } from '@tauri-apps/api/path';
 import { Box, ChevronDown, ChevronUp, Cpu, Save, Trash2 } from 'lucide-react';
 import VersionSelector from './VersionSelector';
 
-function InstanceSettings({ instance, onSave, onInstanceUpdated, onShowConfirm, onDelete, onShowNotification }) {
+function InstanceSettings({ instance, onSave, onInstanceUpdated, onShowConfirm, onDelete, onShowNotification, isScrolled }) {
   const getRecommendedJava = (mcVersion) => {
     if (!mcVersion) return 21;
     try {
@@ -153,8 +153,10 @@ function InstanceSettings({ instance, onSave, onInstanceUpdated, onShowConfirm, 
         memory_max: memory,
         jvm_args: jvmArgs || null,
       };
-      await onSave(updatedInstance);
-      setHasChanges(false);
+      const success = await onSave(updatedInstance);
+      if (success) {
+        setHasChanges(false);
+      }
     } catch (error) {
       console.error('Failed to save:', error);
     }

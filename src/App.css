@@ -1502,10 +1502,32 @@ body,
    solid backgrounds for equivalent visual coverage.
    ============================================================ */
 
+/* GLOBAL: Kill ALL blur effects on Linux for consistent perf */
+.platform-linux * {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+.platform-linux .loading-overlay,
+.platform-linux .welcome-overlay,
+.platform-linux .modal-overlay,
+.platform-linux .account-modal-overlay,
+.platform-linux .choice-overlay,
+.platform-linux .options-modal-overlay,
+.platform-linux .version-modal-overlay,
+.platform-linux .filter-overlay,
+.platform-linux .icon-picker-overlay,
+.platform-linux .add-mod-modal-overlay,
+.platform-linux .add-server-overlay,
+.platform-linux .console-refreshing-overlay,
+.platform-linux .mod-updating-overlay {
+  background: rgba(0, 0, 0, 0.88) !important;
+}
+
 /* Animated background blobs - use softer gradient instead of runtime blur */
 .platform-linux .app.bg-dynamic::before,
 .platform-linux .app.bg-dynamic::after {
-  filter: none;
+  filter: none !important;
   opacity: 0.03;
   background: radial-gradient(circle, rgba(var(--accent-rgb), 1) 0%, rgba(var(--accent-rgb), 0) 70%);
 }
@@ -1530,27 +1552,42 @@ body,
   backdrop-filter: none;
 }
 
-/* InstanceList */
+/* InstanceList — glass headers: use opaque solid bg instead of blur */
 .platform-linux .instance-header.instance-header-style-glass-bottom,
 .platform-linux .instance-header.instance-header-style-glass-top,
 .platform-linux .instance-header.instance-header-style-glass-bottom-icons,
 .platform-linux .instance-header.instance-header-style-glass-top-icons {
-  backdrop-filter: blur(8.7px);
-  -webkit-backdrop-filter: blur(8.7px);
-  background: rgba(20, 20, 22, 0.62);
+  background: rgba(20, 20, 22, 0.94);
   border: 1px solid rgba(255, 255, 255, 0.12);
 }
 
-.platform-linux .instance-header-center-toggle,
-.platform-linux .instance-header-center-actions {
-  backdrop-filter: none;
-  -webkit-backdrop-filter: none;
-  background: rgba(20, 20, 22, 0.9);
+/* Center dock: use the same var(--surface) as Windows — no override needed.
+   The dock never uses backdrop-filter, so the global kill is harmless. */
+
+/* Center dock expanded: kill the expensive filter: drop-shadow on Linux */
+.platform-linux .instance-header-center-dock.expanded {
+  filter: none;
 }
 
+/* Instance card states: replace blur with grayscale + opacity only */
 .platform-linux .instance-card.deleting > :not(.deleting-overlay) {
-  filter: grayscale(0.4);
+  filter: grayscale(0.4) !important;
   opacity: 0.5;
+}
+
+.platform-linux .instance-card.launching > :not(.launching-overlay) {
+  filter: grayscale(0.4) !important;
+  opacity: 0.5;
+}
+
+.platform-linux .instance-card.setting-up > :not(.instance-setup-simple-overlay) {
+  filter: grayscale(0.3) !important;
+  opacity: 0.5;
+}
+
+.platform-linux .instances-grid.list .instance-card.launching > :not(.launching-overlay) {
+  filter: grayscale(0.35) !important;
+  opacity: 0.45;
 }
 
 /* InstanceEditor - sticky headers */
@@ -1565,6 +1602,16 @@ body,
   backdrop-filter: none;
   -webkit-backdrop-filter: none;
   background: rgba(var(--background-rgb), 0.92);
+}
+
+/* InstanceEditor - console: speed up initial render of large log output */
+.platform-linux .console-content {
+  contain: layout style;
+}
+
+.platform-linux .log-line {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 1.5em;
 }
 
 /* InstanceEditor - console refresh */
@@ -1666,6 +1713,62 @@ body,
 .platform-linux .account-modal-overlay {
   backdrop-filter: none;
   background: rgba(0, 0, 0, 0.9);
+}
+
+/* ModVersionModal: kill blur in contentReveal animation */
+@keyframes contentReveal {
+  from {
+    opacity: 0;
+    transform: translateY(3px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.platform-linux .content-appear {
+  will-change: opacity, transform;
+}
+
+/* InstanceEditor - header/footer: opaque bg, kill animations + heavy effects */
+.platform-linux .editor-header {
+  background: rgba(12, 15, 21, 0.96);
+  animation: none;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
+.platform-linux .editor-header::before {
+  animation: none;
+  opacity: 0.56;
+}
+
+.platform-linux .editor-tab-panel {
+  animation: none;
+  opacity: 1;
+}
+
+.platform-linux .settings-footer-bar {
+  background: rgba(20, 20, 22, 0.96);
+  animation: none;
+}
+
+.platform-linux .settings-footer {
+  background: rgba(var(--background-rgb), 0.96);
+}
+
+/* Bulk actions bar */
+.platform-linux .bulk-actions-bar {
+  background: rgba(var(--background-rgb), 0.96);
+}
+
+/* Conflict modal overlay (missing) */
+.platform-linux .conflict-modal-overlay {
+  background: rgba(0, 0, 0, 0.88) !important;
+}
+
+/* Search load more overlay */
+.platform-linux .search-load-more-overlay {
+  background: rgba(0, 0, 0, 0.85);
 }
 
 .instance-category-modal-body {

@@ -83,9 +83,18 @@ fn main() {
       "--no-proxy-server --disable-features=WinrtGeolocationImplementation,msWebOOUI --disable-background-networking");
   }
 
-  // Fix for blank screen on Wayland with WebKitGTK
+  // GPU-accelerated rendering on Linux with WebKitGTK
   #[cfg(target_os = "linux")]
-  std::env::set_var("WEBKIT_DISABLE_COMPOSITING_MODE", "1");
+  {
+    // Avoid blank screen on Wayland without disabling GPU compositing
+    if std::env::var("WEBKIT_DISABLE_DMABUF_RENDERER").is_err() {
+      std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
+    }
+    // Force hardware acceleration
+    if std::env::var("WEBKIT_HARDWARE_ACCELERATION_POLICY").is_err() {
+      std::env::set_var("WEBKIT_HARDWARE_ACCELERATION_POLICY", "always");
+    }
+  }
   
   app_lib::run();
 }

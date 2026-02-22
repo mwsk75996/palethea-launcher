@@ -355,7 +355,12 @@ function InstanceConsole({ instance, onInstanceUpdated, onShowNotification, clea
 
     setJumpToBottomOnOpen(openJumpPreference);
     pendingOpenJumpRef.current = openJumpPreference;
-    loadLogs(true);
+
+    // Defer the log load so the tab renders first without freezing
+    const raf = requestAnimationFrame(() => {
+      loadLogs(true);
+    });
+    return () => cancelAnimationFrame(raf);
   }, [instance.id, clearOnMount]);
 
   useEffect(() => {
@@ -408,15 +413,40 @@ function InstanceConsole({ instance, onInstanceUpdated, onShowNotification, clea
           shouldStickToBottomRef.current = false;
           userPinnedToBottomRef.current = true;
         } else {
-          const lines = normalizedLog.split('\n').map((line, index) => ({
-            id: index,
-            text: line,
-            type: getLineType(line)
-          }));
+          const rawLines = normalizedLog.split('\n');
           const previousCount = logsRef.current.length;
-          const hasNewOutput = lines.length > previousCount;
+          const hasNewOutput = rawLines.length > previousCount;
           shouldStickToBottomRef.current = hasNewOutput && userPinnedToBottomRef.current;
-          setLogs(lines);
+
+          // Parse lines in chunks to avoid blocking the UI thread
+          const CHUNK_SIZE = 500;
+          if (rawLines.length <= CHUNK_SIZE) {
+            const lines = rawLines.map((line, index) => ({
+              id: index,
+              text: line,
+              type: getLineType(line)
+            }));
+            setLogs(lines);
+          } else {
+            // First chunk renders immediately (visible lines)
+            const firstChunk = rawLines.slice(0, CHUNK_SIZE).map((line, index) => ({
+              id: index,
+              text: line,
+              type: getLineType(line)
+            }));
+            setLogs(firstChunk);
+
+            // Remaining chunks parsed on next frame
+            requestAnimationFrame(() => {
+              if (latestLoadRequestIdRef.current !== requestId) return;
+              const allLines = rawLines.map((line, index) => ({
+                id: index,
+                text: line,
+                type: getLineType(line)
+              }));
+              setLogs(allLines);
+            });
+          }
         }
       } else {
         setLogs([]);
